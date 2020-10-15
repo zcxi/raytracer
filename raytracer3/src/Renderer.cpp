@@ -9,6 +9,7 @@
 #include "Renderer.h"
 #include "Math/Vec3.h"
 #include "Math/Quaternion.h"
+#include <thread>
 
 Renderer::Renderer(ImageWriter* imageWriter, Scene* scenePtr, Camera* camera){
     this->imageWriter = imageWriter;
@@ -24,30 +25,75 @@ void Renderer::render(){
     double fov = camera->getFov();
     Vec3 cameraDirection = camera->GetDir();
 
-    std::vector<std::vector<Vec3>> framebuffer(height, std::vector<Vec3>(width, Vec3()));
+    this->frameBuffer = std::vector<std::vector<Vec3>>(height, std::vector<Vec3>(width, Vec3()));
     double fovScale = tan(fov * 0.5);
     double aspectRatio = width / height;
 
     double x = -1, y = -1, z= -1;
     
-
     for (int j = 0; j < height; ++j) {
 
-        y = (1 - 2 * (j + 0.5) / (double)height) * fovScale;
 
-        for (int i = 0; i < width; ++i) {
+        for (int i = 0; i < width; ++i) {  
+            
+
+
+            y = (1 - 2 * (j + 0.5) / (double)height) * fovScale;
 
             //map pixel coordinates to screen space
             x = (2 * (i + 0.5) / (double)width - 1) * aspectRatio * fovScale;
 
-            Vec3 ray = (Vec3(x, y, z)).normalize();
-            //ray = Quaternion::rotateCamera(ray, cameraDirection);
-            Vec3 pixel = scene->trace(camera->GetPos(), ray, 0);
+            Vec3 ray = Vec3(x, y, z);
             
-
-            framebuffer[j][i] = Vec3(std::min(MAX_COLOR_VALUE, (int)pixel.X()), std::min(MAX_COLOR_VALUE, (int)pixel.Y()), std::min(MAX_COLOR_VALUE, (int)pixel.Z()));
+            this->rays.push_back(ray);
+            this->rayCoords.push_back(std::make_pair(j, i));
+            
         }
     }
-    imageWriter->write(framebuffer);
+
+    int numThreads = std::thread::hardware_concurrency();
+    std::vector<std::thread> pool;
+
+    for (int i = 0; i < numThreads; i++)
+    {   
+        pool.push_back( std::thread(traceJob, this));
+        
+    }
+    for (int i = 0; i < numThreads; i++)
+    {
+        pool[i].join();
+
+    }
+
+
+    imageWriter->write(this->frameBuffer);
+
+}
+
+void Renderer::traceJob(Renderer * renderer) {
+    
+    while (true) {
+        renderer->rays_mutex.lock();
+        if (renderer->rays.size() == 0) {
+            
+            renderer->rays_mutex.unlock();
+            break;
+        }
+        Vec3 ray = renderer->rays.back();
+        renderer->rays.pop_back();
+
+        int j = renderer->rayCoords.back().first;
+        int i = renderer->rayCoords.back().second;
+        renderer->rayCoords.pop_back();
+
+        renderer->rays_mutex.unlock();
+
+        ray = ray.normalize();
+        Vec3 pixel = renderer->scene->trace(renderer->camera->GetPos(), ray, 0);
+        renderer->frame_mutex.lock();
+        renderer->frameBuffer[j][i] = Vec3(std::min(renderer->MAX_COLOR_VALUE, (int)pixel.X()), std::min(renderer->MAX_COLOR_VALUE, (int)pixel.Y()), std::min(renderer->MAX_COLOR_VALUE, (int)pixel.Z()));
+        renderer->frame_mutex.unlock();
+
+    }
 
 }

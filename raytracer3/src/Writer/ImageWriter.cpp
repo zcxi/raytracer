@@ -12,7 +12,8 @@ bool ImageWriter::write(std::vector<std::vector<Vec3>> &image){
     uint32_t width = image[0].size();
     uint32_t height = image.size();
 
-    std::ofstream ofs("C:/Users/chenx/Documents/projects/raytracer/untitled.ppm", std::ios::out | std::ios::binary);
+    std::ofstream ofs("C:/Users/chenx/Documents/projects/raytracer3/output.ppm", std::ios::out | std::ios::binary);
+
     ofs << "P6\n" << width << " " << height << "\n255\n";
 
     // outputs color of each pixel

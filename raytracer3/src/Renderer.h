@@ -8,6 +8,7 @@
 
 #include "Writer/ImageWriter.h"
 #include "Scene/Scene.h"
+#include <mutex>
 
 class Renderer {
 
@@ -23,6 +24,13 @@ class Renderer {
         ImageWriter* imageWriter;
         Scene* scene;
         Camera* camera;
+
+        std::vector<Vec3> rays;
+        std::vector<std::pair<int, int>> rayCoords;
+        std::mutex rays_mutex;
+        std::mutex frame_mutex;
+        std::vector<std::vector<Vec3>> frameBuffer;
+        static void traceJob(Renderer* renderer);
 };
 
 
