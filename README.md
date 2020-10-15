@@ -1,15 +1,16 @@
 # raytracer
 
-C++ practice project
+C++ project
 
-Uses vector math to perform ray tracing
+Graphical renderer that uses vector math to simulate light ray projections.
 
-TODO:
-Change rendering to utilize a thread pool to speed up rendering
+This project was built in order to better understand computer graphics. 
+Built on pure C++17, external dependencies were removed.
 
-Done:
+### Future Changes
+Post processing, soft shadows
 
-Represent objects in 3d space
-Calculate rays and shadows
+
+### Sample Output
 
 ![header image](/raytracer3/output.png)
