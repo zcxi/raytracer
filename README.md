@@ -11,6 +11,6 @@ Built on pure C++17, external dependencies were removed.
 Post processing, monte carlo soft shadows
 
 
-### Sample Output
+### Sample Trace
 
 ![header image](/raytracer3/output.png)
