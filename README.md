@@ -8,7 +8,7 @@ This project was built in order to better understand computer graphics.
 Built on pure C++17, external dependencies were removed.
 
 ### Future Changes
-Post processing, soft shadows
+Post processing, monte carlo soft shadows
 
 
 ### Sample Output
