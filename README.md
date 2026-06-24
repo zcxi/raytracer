@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 path tracer. Version 0.4 adds diffuse global illumination,
-perfect mirrors, dielectric transmission, Fresnel reflection, configurable path
-depth, and Russian roulette termination.
+A small C++11 path tracer. Version 0.5 adds sampled emissive geometry,
+rectangular and spherical area lights, soft shadows, environment lighting, and
+multiple importance sampling.
 
 ## Building
 
@@ -18,7 +18,8 @@ Run the demo renderer with an optional output path and image-quality settings:
 
 ```sh
 ./build/raytracer output.ppm --samples 128 --bounces 8 \
-  --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1
+  --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1 \
+  --env-map studio.ppm --env-intensity 1.5
 ```
 
 Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
@@ -29,6 +30,10 @@ same image regardless of worker scheduling.
 Materials are created with `Material::diffuse`, `Material::mirror`, and
 `Material::dielectric`. Diffuse paths use cosine-weighted hemisphere sampling;
 point lights are sampled directly at every diffuse bounce to reduce noise.
+Emissive spheres and rectangles are automatically registered as area lights.
+Diffuse light and BSDF samples are combined with the power heuristic. A gradient
+environment is built in, and lat-long P6 PPM images can be loaded as environment
+maps.
 
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the

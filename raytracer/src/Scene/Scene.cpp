@@ -11,7 +11,7 @@
 constexpr double Scene::RAY_EPSILON;
 
 Scene::Scene(const Vec3& background)
-    : backgroundColor(background) {
+    : environment(background, background), emissiveShapes() {
 }
 
 bool Scene::findClosestHit(const Ray& ray, double minDistance,
@@ -47,7 +47,7 @@ Vec3 Scene::trace(const Ray& ray) const {
     return trace(ray, sampler, PathTraceSettings(1, 1));
 }
 
-Vec3 Scene::directLighting(const HitRecord& hit) const {
+Vec3 Scene::pointLighting(const HitRecord& hit) const {
     const double pi = 3.14159265358979323846;
     Vec3 result;
     for (const auto& lightSource : lightSources) {
@@ -78,6 +78,112 @@ Vec3 Scene::directLighting(const HitRecord& hit) const {
             hit.shape->getSurfaceColor().elementwiseMultiply(incomingLight) / pi;
     }
     return result;
+}
+
+std::size_t Scene::sampledLightCount() const {
+    return emissiveShapes.size() +
+        (environment.isBlack() ? 0u : 1u);
+}
+
+double Scene::powerHeuristic(double firstPdf, double secondPdf) {
+    const double firstSquared = firstPdf * firstPdf;
+    const double secondSquared = secondPdf * secondPdf;
+    const double sum = firstSquared + secondSquared;
+    return sum > 0.0 ? firstSquared / sum : 0.0;
+}
+
+double Scene::emissiveLightPdf(
+        const Vec3& origin, const HitRecord& lightHit) const {
+    const std::size_t lightCount = sampledLightCount();
+    if (lightCount == 0 ||
+        lightHit.shape->surfaceArea() <= Vec3::EPSILON) {
+        return 0.0;
+    }
+    const Vec3 offset = lightHit.point - origin;
+    const double distanceSquared = offset.dot(offset);
+    const Vec3 direction = offset.normalize();
+    const double lightCosine =
+        std::abs(lightHit.normal.dot(-direction));
+    if (lightCosine <= Vec3::EPSILON) {
+        return 0.0;
+    }
+    return (1.0 / static_cast<double>(lightCount)) *
+        (1.0 / lightHit.shape->surfaceArea()) *
+        distanceSquared / lightCosine;
+}
+
+double Scene::environmentLightPdf(const Vec3& direction) const {
+    const std::size_t lightCount = sampledLightCount();
+    if (lightCount == 0 || environment.isBlack()) {
+        return 0.0;
+    }
+    return environment.pdf(direction) /
+        static_cast<double>(lightCount);
+}
+
+Vec3 Scene::directLighting(
+        const HitRecord& hit, Sampler& sampler) const {
+    const double pi = 3.14159265358979323846;
+    Vec3 result = pointLighting(hit);
+    const std::size_t lightCount = sampledLightCount();
+    if (lightCount == 0) {
+        return result;
+    }
+
+    const std::size_t selected = std::min(
+        lightCount - 1,
+        static_cast<std::size_t>(sampler.next() * lightCount));
+    Vec3 lightDirection;
+    Vec3 incomingRadiance;
+    double lightPdf = 0.0;
+    double maximumDistance = std::numeric_limits<double>::infinity();
+
+    if (selected < emissiveShapes.size()) {
+        const Shape* light = emissiveShapes[selected];
+        SurfaceSample lightSample;
+        if (!light->sampleSurface(sampler, lightSample)) {
+            return result;
+        }
+        const Vec3 toLight = lightSample.point - hit.point;
+        const double distanceSquared = toLight.dot(toLight);
+        const double distance = std::sqrt(distanceSquared);
+        if (distance <= RAY_EPSILON) {
+            return result;
+        }
+        lightDirection = toLight / distance;
+        const double lightCosine =
+            std::abs(lightSample.normal.dot(-lightDirection));
+        if (lightCosine <= Vec3::EPSILON) {
+            return result;
+        }
+        lightPdf =
+            lightSample.areaPdf * distanceSquared / lightCosine /
+            static_cast<double>(lightCount);
+        incomingRadiance = light->getMaterial().emission;
+        maximumDistance = distance - RAY_EPSILON;
+    } else {
+        const EnvironmentSample sample = environment.sample(sampler);
+        lightDirection = sample.direction;
+        incomingRadiance = sample.radiance;
+        lightPdf = sample.pdf / static_cast<double>(lightCount);
+    }
+
+    const double surfaceCosine =
+        std::max(0.0, hit.normal.dot(lightDirection));
+    if (surfaceCosine <= 0.0 || lightPdf <= 0.0) {
+        return result;
+    }
+    const Ray shadowRay(
+        hit.point + hit.normal * RAY_EPSILON, lightDirection);
+    if (isOccluded(shadowRay, maximumDistance)) {
+        return result;
+    }
+
+    const double bsdfPdf = surfaceCosine / pi;
+    const double weight = powerHeuristic(lightPdf, bsdfPdf);
+    const Vec3 bsdf = hit.shape->getMaterial().albedo / pi;
+    return result + bsdf.elementwiseMultiply(incomingRadiance) *
+        (surfaceCosine * weight / lightPdf);
 }
 
 Vec3 Scene::reflect(const Vec3& direction, const Vec3& normal) {
@@ -148,6 +254,9 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
     Vec3 radiance;
     Vec3 throughput(1.0, 1.0, 1.0);
     Ray currentRay = ray;
+    Vec3 previousPoint;
+    double previousBsdfPdf = 0.0;
+    bool previousWasDelta = true;
 
     for (unsigned int bounce = 0;
          bounce < settings.maxBounces; ++bounce) {
@@ -155,23 +264,44 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
         if (!findClosestHit(
                 currentRay, RAY_EPSILON,
                 std::numeric_limits<double>::infinity(), hit)) {
+            const double weight = previousWasDelta
+                ? 1.0
+                : powerHeuristic(
+                      previousBsdfPdf,
+                      environmentLightPdf(currentRay.direction()));
             radiance = radiance +
-                throughput.elementwiseMultiply(backgroundColor);
+                throughput.elementwiseMultiply(
+                    environment.evaluate(currentRay.direction())) * weight;
             break;
         }
 
         const Material& material = hit.shape->getMaterial();
+        double emissionWeight = 1.0;
+        if (bounce > 0 && !previousWasDelta &&
+            !material.emission.near(Vec3())) {
+            emissionWeight = powerHeuristic(
+                previousBsdfPdf,
+                emissiveLightPdf(previousPoint, hit));
+        }
         radiance = radiance +
-            throughput.elementwiseMultiply(material.emission);
+            throughput.elementwiseMultiply(material.emission) *
+            emissionWeight;
 
         Vec3 scatteredDirection;
         if (material.type == MaterialType::Diffuse) {
             radiance = radiance +
-                throughput.elementwiseMultiply(directLighting(hit));
+                throughput.elementwiseMultiply(
+                    directLighting(hit, sampler));
             scatteredDirection = cosineHemisphere(hit.normal, sampler);
+            previousBsdfPdf =
+                std::max(0.0, hit.normal.dot(scatteredDirection)) /
+                3.14159265358979323846;
+            previousWasDelta = false;
         } else if (material.type == MaterialType::Mirror) {
             scatteredDirection =
                 reflect(currentRay.direction(), hit.normal).normalize();
+            previousBsdfPdf = 0.0;
+            previousWasDelta = true;
         } else {
             const double refractionRatio = hit.frontFace
                 ? 1.0 / material.refractiveIndex
@@ -192,6 +322,8 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
                     refract(currentRay.direction(), hit.normal,
                             refractionRatio);
             }
+            previousBsdfPdf = 0.0;
+            previousWasDelta = true;
         }
 
         throughput =
@@ -211,6 +343,7 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
 
         const double side =
             scatteredDirection.dot(hit.normal) >= 0.0 ? 1.0 : -1.0;
+        previousPoint = hit.point;
         currentRay = Ray(
             hit.point + hit.normal * (RAY_EPSILON * side),
             scatteredDirection);
@@ -220,8 +353,16 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
 
 void Scene::addShape(std::unique_ptr<Shape> shape) {
     if (shape) {
+        if (!shape->getMaterial().emission.near(Vec3()) &&
+            shape->surfaceArea() > Vec3::EPSILON) {
+            emissiveShapes.push_back(shape.get());
+        }
         shapes.push_back(std::move(shape));
     }
+}
+
+void Scene::setEnvironment(const Environment& newEnvironment) {
+    environment = newEnvironment;
 }
 
 void Scene::addLight(std::unique_ptr<LightSource> source) {

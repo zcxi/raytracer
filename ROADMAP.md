@@ -143,6 +143,8 @@ non-black shadow regions.
 
 ## Phase 4: Path-Traced Lighting
 
+**Status: completed for v0.5 on June 24, 2026.**
+
 - Treat emissive materials as light sources.
 - Add rectangular and spherical area lights.
 - Sample points on light surfaces for soft shadows.
@@ -152,6 +154,19 @@ non-black shadow regions.
 
 **Visible result:** soft shadows, natural ambient lighting, and substantially less
 noise around small or bright lights.
+
+### Delivered in v0.5
+
+- Added automatic light registration for sampleable emissive geometry.
+- Added uniform surface sampling and area PDFs for spheres and finite rectangles.
+- Added rectangular and spherical area lights with naturally soft shadows.
+- Added one-light direct sampling at every diffuse bounce.
+- Added power-heuristic multiple importance sampling between light and BSDF
+  strategies, including complementary weights when BSDF paths hit emitters.
+- Added uniform environment sampling with matching MIS weights.
+- Added configurable gradient environment lighting.
+- Added optional lat-long P6 PPM environment maps and intensity control.
+- Added area-light, surface-PDF, environment, and MIS tests.
 
 ## Phase 5: Physically Based Materials
 
@@ -205,8 +220,7 @@ Completed June 24, 2026.
 
 ### v0.5 — Realistic Lighting
 
-Complete Phase 4 with area lights, environment lighting, and multiple importance
-sampling.
+Completed June 24, 2026.
 
 ### v0.6 — Physically Based Renderer
 

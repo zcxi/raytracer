@@ -7,6 +7,7 @@
 
 
 #include "Light/LightSource.h"
+#include "Environment.h"
 #include "../shapes/Shape.h"
 #include "../Math/Ray.h"
 #include "../Math/Sampler.h"
@@ -38,6 +39,7 @@ class Scene {
         bool isOccluded(const Ray& ray, double maxDistance) const;
         void addShape(std::unique_ptr<Shape> shape);
         void addLight(std::unique_ptr<LightSource> source);
+        void setEnvironment(const Environment& environment);
 
         static Vec3 reflect(const Vec3& direction, const Vec3& normal);
         static Vec3 refract(const Vec3& direction, const Vec3& normal,
@@ -47,13 +49,21 @@ class Scene {
             double refractionRatio);
         static double schlickReflectance(double cosine,
                                          double refractionRatio);
+        static double powerHeuristic(double firstPdf, double secondPdf);
 
     private:
-        Vec3 directLighting(const HitRecord& hit) const;
+        Vec3 directLighting(
+            const HitRecord& hit, Sampler& sampler) const;
+        Vec3 pointLighting(const HitRecord& hit) const;
+        double emissiveLightPdf(
+            const Vec3& origin, const HitRecord& lightHit) const;
+        double environmentLightPdf(const Vec3& direction) const;
+        std::size_t sampledLightCount() const;
         static Vec3 cosineHemisphere(const Vec3& normal, Sampler& sampler);
-        Vec3 backgroundColor;
+        Environment environment;
         std::vector<std::unique_ptr<Shape>> shapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;
+        std::vector<const Shape*> emissiveShapes;
 };
 
 

@@ -9,6 +9,9 @@
 #include "../Math/Vec3.h"
 #include "../Materials/Material.h"
 #include "HitRecord.h"
+#include "SurfaceSample.h"
+
+class Sampler;
 
 class Shape {
 
@@ -23,6 +26,13 @@ class Shape {
         virtual ~Shape() {}
         virtual bool intersect(const Ray& ray, double minDistance,
                                double maxDistance, HitRecord& hit) const = 0;
+        virtual bool sampleSurface(
+            Sampler& sampler, SurfaceSample& sample) const {
+            (void)sampler;
+            (void)sample;
+            return false;
+        }
+        virtual double surfaceArea() const { return 0.0; }
 
         const Material& getMaterial() const { return material; }
         const Vec3& getSurfaceColor() const { return material.albedo; }

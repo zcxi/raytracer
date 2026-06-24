@@ -14,6 +14,7 @@
 #include "Shapes/Cube.h"
 #include "Shapes/Plane.h"
 #include "Shapes/Pyramid.h"
+#include "Shapes/Rectangle.h"
 #include "Shapes/RectangularPrism.h"
 
 namespace {
@@ -22,11 +23,15 @@ struct CommandLineOptions {
     std::string outputPath;
     RenderSettings renderSettings;
     ImageOutputSettings outputSettings;
+    std::string environmentMap;
+    double environmentIntensity;
 
     CommandLineOptions()
         : outputPath("output.ppm"),
           renderSettings(32, 8, 1, 0, 8, 4),
-          outputSettings(0.0, ToneMapper::Aces) {
+          outputSettings(0.0, ToneMapper::Aces),
+          environmentMap(),
+          environmentIntensity(1.0) {
     }
 };
 
@@ -84,7 +89,9 @@ void printUsage() {
         << "  --seed N          Deterministic sampling seed (default: 1)\n"
         << "  --threads N       Worker count; 0 uses hardware concurrency\n"
         << "  --bounces N       Maximum path depth (default: 8)\n"
-        << "  --rr-start N      Russian roulette start bounce (default: 4)\n";
+        << "  --rr-start N      Russian roulette start bounce (default: 4)\n"
+        << "  --env-map PATH    Lat-long P6 PPM environment map\n"
+        << "  --env-intensity N Environment multiplier (default: 1)\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -130,6 +137,15 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
         } else if (argument == "--rr-start") {
             options.renderSettings.russianRouletteStart =
                 parseUnsigned(value, argument);
+        } else if (argument == "--env-map") {
+            options.environmentMap = value;
+        } else if (argument == "--env-intensity") {
+            options.environmentIntensity = std::stod(value);
+            if (!std::isfinite(options.environmentIntensity) ||
+                options.environmentIntensity < 0.0) {
+                throw std::invalid_argument(
+                    "--env-intensity requires a finite non-negative number.");
+            }
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
@@ -145,7 +161,19 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
 
 void demo1(const CommandLineOptions& options) {
     const double pi = 3.14159265358979323846;
-    Scene scene(Vec3(0.02, 0.03, 0.05));
+    Scene scene;
+    Environment environment(
+        Vec3(0.08, 0.06, 0.05),
+        Vec3(0.12, 0.2, 0.42),
+        options.environmentIntensity);
+    if (!options.environmentMap.empty() &&
+        !environment.loadPpm(
+            options.environmentMap, options.environmentIntensity)) {
+        throw std::runtime_error(
+            "Failed to load environment map " +
+            options.environmentMap + ".");
+    }
+    scene.setEnvironment(environment);
 
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, 7, -58), 4.0,
@@ -163,14 +191,19 @@ void demo1(const CommandLineOptions& options) {
                     Material::diffuse(Vec3(1.0, 0.65, 0.08)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(0, 14, -59), 2.0,
-                   Material::diffuse(Vec3(0.9, 0.85, 0.7)))));
+                   Material::diffuse(
+                       Vec3(0.0, 0.0, 0.0),
+                       Vec3(10.0, 7.0, 3.0)))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Rectangle(
+            Vec3(0, -17, -54), Vec3(0, 1, 0),
+            Vec3(0, 0, -1), 18, 7,
+            Material::diffuse(
+                Vec3(0.0, 0.0, 0.0),
+                Vec3(4.0, 5.0, 8.0)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Plane(Vec3(0, 0, -1), Vec3(0, 0, -64),
                   Material::diffuse(Vec3(0.55, 0.18, 0.15)))));
-
-    scene.addLight(std::unique_ptr<LightSource>(
-        new PointSource(
-            Vec3(40, 40, 10), Vec3(1.0, 0.95, 0.85), 150000)));
 
     Camera camera(Vec3(0, 0.1, 0), Vec3(),
                   640, 640, pi / 6);

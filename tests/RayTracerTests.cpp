@@ -4,17 +4,21 @@
 #include "Materials/Material.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
+#include "Scene/Environment.h"
 #include "Scene/Light/PointSource.h"
 #include "Scene/Scene.h"
 #include "Shapes/Cube.h"
 #include "Shapes/Plane.h"
 #include "Shapes/Pyramid.h"
+#include "Shapes/Rectangle.h"
 #include "Shapes/RectangularPrism.h"
 #include "Shapes/Sphere.h"
 #include "Writer/ImageWriter.h"
 
 #include <cmath>
+#include <cstdio>
 #include <functional>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -435,6 +439,103 @@ void testSecondaryRayTransport() {
                   "Secondary-ray sampling is deterministic.");
 }
 
+void testAreaLightsAndEnvironment() {
+    const Rectangle rectangle(
+        Vec3(0.0, 0.0, -2.0), Vec3(0.0, 0.0, -1.0),
+        Vec3(0.0, 1.0, 0.0), 4.0, 2.0,
+        Material::diffuse(Vec3(), Vec3(5.0, 5.0, 5.0)));
+    Sampler rectangleSampler(2, 3, 4);
+    SurfaceSample rectangleSample;
+    expect(rectangle.sampleSurface(
+               rectangleSampler, rectangleSample),
+           "Rectangular emitters support surface sampling.");
+    expectNear(rectangleSample.areaPdf, 1.0 / 8.0, 1e-9,
+               "Rectangle surface samples use uniform area density.");
+    expect(std::abs(rectangleSample.point.X()) <= 2.0 &&
+               std::abs(rectangleSample.point.Y()) <= 1.0,
+           "Rectangle samples remain inside its bounds.");
+
+    const Sphere sphere(
+        Vec3(), 2.0,
+        Material::diffuse(Vec3(), Vec3(1.0, 1.0, 1.0)));
+    Sampler sphereSampler(5, 6, 7);
+    SurfaceSample sphereSample;
+    expect(sphere.sampleSurface(sphereSampler, sphereSample),
+           "Spherical emitters support surface sampling.");
+    expectNear(sphereSample.normal.getLength(), 1.0, 1e-9,
+               "Sphere surface samples provide unit normals.");
+    expectNear(
+        sphereSample.point.distanceTo(Vec3()), 2.0, 1e-9,
+        "Sphere samples lie on the sphere.");
+
+    const Environment environment(
+        Vec3(0.2, 0.1, 0.0), Vec3(0.0, 0.2, 0.8));
+    expectVecNear(
+        environment.evaluate(Vec3(0.0, -1.0, 0.0)),
+        Vec3(0.2, 0.1, 0.0), 1e-9,
+        "Environment horizon color appears below.");
+    expectVecNear(
+        environment.evaluate(Vec3(0.0, 1.0, 0.0)),
+        Vec3(0.0, 0.2, 0.8), 1e-9,
+        "Environment zenith color appears above.");
+    Sampler environmentSampler(8, 9, 10);
+    const EnvironmentSample environmentSample =
+        environment.sample(environmentSampler);
+    expectNear(environmentSample.direction.getLength(), 1.0, 1e-9,
+               "Environment sampling returns unit directions.");
+    expectNear(
+        environmentSample.pdf, 1.0 / (4.0 * PI), 1e-9,
+        "Uniform environment sampling has the expected PDF.");
+    expectThrows([]() {
+        const Environment invalid(
+            Vec3(), Vec3(), -1.0);
+        (void)invalid;
+    }, "Environment lighting rejects negative intensity.");
+
+    const std::string mapPath = "test-environment.ppm";
+    {
+        std::ofstream map(mapPath.c_str(), std::ios::binary);
+        map << "P6\n2 1\n255\n";
+        const unsigned char pixels[6] = {
+            255, 0, 0, 0, 0, 255
+        };
+        map.write(
+            reinterpret_cast<const char*>(pixels), sizeof(pixels));
+    }
+    Environment mapped;
+    expect(mapped.loadPpm(mapPath, 2.0),
+           "Environment loads a lat-long P6 PPM image.");
+    const Vec3 mappedColor =
+        mapped.evaluate(Vec3(0.0, 0.0, -1.0));
+    expect(mappedColor.X() > 1.9 && mappedColor.Z() < 0.1,
+           "Environment map lookup applies image color and intensity.");
+    std::remove(mapPath.c_str());
+
+    expectNear(Scene::powerHeuristic(0.5, 0.5), 0.5, 1e-9,
+               "MIS power heuristic balances equal PDFs.");
+    expect(Scene::powerHeuristic(1.0, 0.1) > 0.98,
+           "MIS favors the strategy with the larger PDF.");
+
+    Scene areaLightScene;
+    areaLightScene.addShape(std::unique_ptr<Shape>(
+        new Plane(
+            Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -5.0),
+            Material::diffuse(Vec3(0.8, 0.8, 0.8)))));
+    areaLightScene.addShape(std::unique_ptr<Shape>(
+        new Rectangle(
+            Vec3(0.0, 2.0, -3.0), Vec3(0.0, -1.0, 0.0),
+            Vec3(0.0, 0.0, -1.0), 2.0, 2.0,
+            Material::diffuse(
+                Vec3(), Vec3(10.0, 10.0, 10.0)))));
+    Sampler areaSampler(1, 1, 123);
+    const Vec3 areaLit = areaLightScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        areaSampler, PathTraceSettings(1, 99));
+    expect(areaLit.X() > 0.0 && areaLit.Y() > 0.0 &&
+               areaLit.Z() > 0.0,
+           "Emissive rectangles are sampled as direct area lights.");
+}
+
 } // namespace
 
 int main() {
@@ -452,6 +553,7 @@ int main() {
         testDeterministicSampling();
         testMaterialsAndOptics();
         testSecondaryRayTransport();
+        testAreaLightsAndEnvironment();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

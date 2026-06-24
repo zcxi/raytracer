@@ -18,6 +18,9 @@ class Sphere: public Shape {
                double refractiveIndex);
         bool intersect(const Ray& ray, double minDistance,
                        double maxDistance, HitRecord& hit) const override;
+        bool sampleSurface(
+            Sampler& sampler, SurfaceSample& sample) const override;
+        double surfaceArea() const override;
 
         double getRadius() const {return radius;}
         const Vec3& getCenter() const {return center;}

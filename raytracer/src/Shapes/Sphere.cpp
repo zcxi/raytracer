@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 #include "Sphere.h"
+#include "../Math/Sampler.h"
 
 Sphere::Sphere(const Vec3& center, double radius,
                const Material& material)
@@ -55,4 +56,22 @@ bool Sphere::intersect(const Ray& ray, double minDistance,
     hit.setFaceNormal(ray, (hit.point - center) / radius);
     hit.shape = this;
     return true;
+}
+
+bool Sphere::sampleSurface(
+        Sampler& sampler, SurfaceSample& sample) const {
+    const double pi = 3.14159265358979323846;
+    const double z = 1.0 - 2.0 * sampler.next();
+    const double angle = 2.0 * pi * sampler.next();
+    const double radial = std::sqrt(std::max(0.0, 1.0 - z * z));
+    sample.normal = Vec3(
+        radial * std::cos(angle), z, radial * std::sin(angle));
+    sample.point = center + sample.normal * radius;
+    sample.areaPdf = 1.0 / surfaceArea();
+    return true;
+}
+
+double Sphere::surfaceArea() const {
+    const double pi = 3.14159265358979323846;
+    return 4.0 * pi * radiusSquared;
 }
