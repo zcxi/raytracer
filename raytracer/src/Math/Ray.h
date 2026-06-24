@@ -6,17 +6,17 @@
 
 class Ray {
 public:
-    Ray(const Vec3& origin, const Vec3& direction, double time = 0.0)
+    constexpr Ray(const Vec3& origin, const Vec3& direction, double time = 0.0)
         : origin_(origin), direction_(direction.normalize()), time_(time) {
         if (direction.getLength() <= Vec3::EPSILON) {
             throw std::invalid_argument("Ray direction must be non-zero.");
         }
     }
 
-    const Vec3& origin() const { return origin_; }
-    const Vec3& direction() const { return direction_; }
-    double time() const { return time_; }
-    Vec3 at(double distance) const { return origin_ + direction_ * distance; }
+    [[nodiscard]] constexpr const Vec3& origin() const noexcept { return origin_; }
+    [[nodiscard]] constexpr const Vec3& direction() const noexcept { return direction_; }
+    [[nodiscard]] constexpr double time() const noexcept { return time_; }
+    [[nodiscard]] constexpr Vec3 at(double distance) const noexcept { return origin_ + direction_ * distance; }
 
 private:
     Vec3 origin_;

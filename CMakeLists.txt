@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.25)
 
 project(raytracer VERSION 1.1.0 LANGUAGES CXX)
 
 option(RAYTRACER_ENABLE_SANITIZERS
        "Enable address and undefined-behavior sanitizers" OFF)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -55,11 +55,19 @@ target_link_libraries(raytracer_tests PRIVATE raytracer_lib)
 add_executable(raytracer_benchmark benchmarks/PerformanceBenchmark.cpp)
 target_link_libraries(raytracer_benchmark PRIVATE raytracer_lib)
 
+option(RAYTRACER_OPTIMIZE_NATIVE "Enable -march=native optimization" ON)
+
 foreach(target raytracer_lib raytracer raytracer_tests raytracer_benchmark)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
+        if(RAYTRACER_OPTIMIZE_NATIVE)
+            target_compile_options(${target} PRIVATE /O2 /arch:AVX2)
+        endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(RAYTRACER_OPTIMIZE_NATIVE)
+            target_compile_options(${target} PRIVATE -march=native -O3)
+        endif()
     endif()
 endforeach()
 
