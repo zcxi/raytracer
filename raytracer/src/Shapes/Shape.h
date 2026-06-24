@@ -7,23 +7,28 @@
 
 
 #include "../Math/Vec3.h"
+#include "HitRecord.h"
 
 class Shape {
 
     public:
 
-        Shape(Vec3 surfaceColor, Vec3 emissionColor, double transparency, double refractiveIndex);
+        Shape(const Vec3& surfaceColor, const Vec3& emissionColor,
+              double transparency, double refractiveIndex);
         int getId();
         void setId(int id);
 
-        virtual Vec3* getRayIntersection(const Vec3 &rayOrigin, const Vec3 &rayDirection) const = 0;
-        virtual Vec3 getNormal(const Vec3 &vector) const = 0;
+        virtual ~Shape() {}
+        virtual bool intersect(const Ray& ray, double minDistance,
+                               double maxDistance, HitRecord& hit) const = 0;
 
         const Vec3& getSurfaceColor() const {
             return surfaceColor;
         }
 
-        Vec3 getReflectionDir(const Vec3 &hit, const Vec3 &dir);
+        const Vec3& getEmissionColor() const { return emissionColor; }
+        double getTransparency() const { return transparency; }
+        double getRefractiveIndex() const { return refractiveIndex; }
 
     private:
         int id;

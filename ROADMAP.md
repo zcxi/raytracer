@@ -1,0 +1,185 @@
+# Ray Tracer Roadmap
+
+The goal of this roadmap is to evolve the current direct-lighting ray caster into a
+physically based path tracer. Each phase should leave the renderer working and
+produce a visible, testable improvement.
+
+## Phase 1: Correctness and Core Foundations
+
+**Status: completed for v0.2 on June 24, 2026.**
+
+Before adding advanced rendering features, make the current renderer numerically
+correct, predictable, and easier to extend.
+
+### Ray and camera correctness
+
+- Calculate the aspect ratio using floating-point division.
+- Build an orthonormal camera basis and apply the camera's orientation to primary
+  rays.
+- Introduce a `Ray` type containing an origin and normalized direction.
+- Define a ray interval (`tMin`, `tMax`) so intersections can reject hits behind
+  the origin or outside a shadow ray's valid range.
+
+### Intersection correctness
+
+- Replace heap-allocated intersection points with a `HitRecord` returned through
+  a value or output parameter.
+- Store hit distance, point, surface normal, front/back-face state, and material
+  reference in `HitRecord`.
+- Rewrite sphere intersection using the quadratic equation and select the nearest
+  valid positive root.
+- Fix plane intersection so it works from either side and rejects parallel rays.
+- Offset secondary and shadow ray origins by a small epsilon to prevent
+  self-intersection.
+- Remove exact floating-point vector equality from intersection logic.
+
+### Math and shading correctness
+
+- Fix `Vec3::operator/` so `vector / scalar` divides each component by the scalar.
+- Clamp diffuse response with `max(0, normal.dot(lightDirection))`.
+- Include light color in direct-light calculations.
+- Use linear floating-point RGB values, preferably in the range `0.0–1.0`, during
+  all lighting calculations.
+- Clamp negative color values before image conversion.
+- Apply linear-to-sRGB gamma conversion when writing the final image.
+- Make the output path configurable instead of using an absolute machine-specific
+  path.
+
+### Ownership and execution safety
+
+- Replace owning raw pointers with values or smart pointers.
+- Clear renderer work queues before starting a new render.
+- Handle `hardware_concurrency()` returning zero.
+- Remove the framebuffer-wide write mutex by assigning exclusive pixels or tiles
+  to workers.
+
+### Verification
+
+- Add unit tests for vector arithmetic, sphere roots, inside-sphere rays, plane
+  intersections, ray intervals, and normal orientation.
+- Render small deterministic reference scenes for camera orientation, inverse
+  square falloff, shadows, and gamma correction.
+- Run with AddressSanitizer or Visual Studio diagnostics and confirm there are no
+  leaks or invalid accesses.
+
+**Completion target:** the existing scene renders without distortion, leaks,
+self-shadow artifacts, negative lighting, or camera-direction errors.
+
+### Delivered in v0.2
+
+- Added portable CMake library, renderer, and test targets.
+- Added normalized rays, bounded intersections, and value-based hit records.
+- Corrected camera orientation, aspect ratio, sphere roots, two-sided planes,
+  normal orientation, shadow-ray offsets, Lambertian response, light color, and
+  inverse-square point-light behavior.
+- Corrected vector division and quaternion normalization, inversion, and rotation.
+- Replaced per-intersection allocations and scene ownership raw pointers.
+- Switched lighting to linear RGB and added safe sRGB PPM encoding.
+- Replaced shared ray/framebuffer locks with atomic pixel scheduling.
+- Added deterministic tests for math, camera projection, intersections, direct
+  lighting, shadows, background color, invalid inputs, and image encoding.
+- Added optional AddressSanitizer/UBSan build instrumentation. The portable MinGW
+  package used for the Windows verification build did not include those runtime
+  libraries; strict compiler warnings and Cppcheck passed cleanly.
+
+## Phase 2: Sampling and Image Quality
+
+- Cast multiple jittered samples through each pixel.
+- Average samples in linear color space.
+- Use a deterministic, independently seeded random-number generator per worker.
+- Add configurable samples per pixel.
+- Add progressive accumulation and periodic image output.
+- Add exposure control and a simple Reinhard or ACES tone mapper.
+
+**Visible result:** smooth silhouettes, reduced aliasing, and preserved highlight
+detail.
+
+## Phase 3: Materials and Secondary Rays
+
+- Introduce a `Material` interface or tagged material model.
+- Support diffuse/Lambertian reflection using cosine-weighted hemisphere sampling.
+- Support perfect mirrors.
+- Support dielectric transmission using Snell's law.
+- Handle total internal reflection.
+- Use Schlick's approximation for Fresnel reflectance.
+- Replace the fixed recursion limit with configurable bounce depth.
+- Add Russian roulette path termination after several bounces.
+
+**Visible result:** reflections, glass, indirect illumination, color bleeding, and
+non-black shadow regions.
+
+## Phase 4: Path-Traced Lighting
+
+- Treat emissive materials as light sources.
+- Add rectangular and spherical area lights.
+- Sample points on light surfaces for soft shadows.
+- Combine direct-light sampling with BSDF sampling.
+- Use multiple importance sampling to reduce noise.
+- Support an environment color, gradient sky, and eventually HDR environment maps.
+
+**Visible result:** soft shadows, natural ambient lighting, and substantially less
+noise around small or bright lights.
+
+## Phase 5: Physically Based Materials
+
+- Add base color, roughness, metallic, transmission, emission, and index of
+  refraction parameters.
+- Implement a Cook-Torrance microfacet BRDF.
+- Use GGX normal distribution, Smith geometry masking, and Schlick Fresnel.
+- Add importance sampling for the GGX distribution.
+- Enforce approximate energy conservation between diffuse and specular lobes.
+
+**Visible result:** convincing plastics, rough and polished metals, glossy paint,
+and more realistic highlights.
+
+## Phase 6: Performance and Scalability
+
+- Add axis-aligned bounding boxes.
+- Build a bounding volume hierarchy for scene geometry.
+- Traverse the BVH iteratively or with shallow recursion.
+- Render image tiles instead of maintaining shared ray queues.
+- Benchmark intersection throughput and render time per sample.
+- Add release-build settings and profile before applying low-level optimizations.
+
+**Completion target:** scenes with many objects and hundreds of samples per pixel
+remain practical to render.
+
+## Phase 7: Camera, Geometry, and Scene Features
+
+- Add thin-lens depth of field with aperture and focus-distance controls.
+- Add motion blur by sampling ray time.
+- Add triangles and triangle meshes.
+- Load common mesh formats such as OBJ or glTF.
+- Add texture coordinates, image textures, normal maps, and procedural textures.
+- Add transforms so geometry can be translated, rotated, and scaled independently.
+
+**Visible result:** richer scenes with photographic focus, detailed assets, and
+textured surfaces.
+
+## Suggested Release Milestones
+
+### v0.2 — Correct Renderer
+
+Completed June 24, 2026.
+
+### v0.3 — Clean Images
+
+Complete Phase 2 with multisampling, gamma correction, exposure, and tone mapping.
+
+### v0.4 — First Path Tracer
+
+Complete Phase 3 with diffuse global illumination, mirrors, and glass.
+
+### v0.5 — Realistic Lighting
+
+Complete Phase 4 with area lights, environment lighting, and multiple importance
+sampling.
+
+### v0.6 — Physically Based Renderer
+
+Complete Phases 5 and 6 with microfacet materials and BVH acceleration.
+
+### v1.0 — Scene-Capable Renderer
+
+Complete the selected Phase 7 features, document the scene format, and provide a
+small reference-scene suite.

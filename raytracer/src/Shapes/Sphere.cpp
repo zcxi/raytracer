@@ -3,42 +3,44 @@
 //
 
 #include <cmath>
+#include <stdexcept>
 #include "Sphere.h"
 
-Sphere::Sphere(Vec3 center, double radius, Vec3 surfaceColor,
-        Vec3 emissionColor, double transparency, double refractiveIndex)
+Sphere::Sphere(const Vec3& center, double radius, const Vec3& surfaceColor,
+        const Vec3& emissionColor, double transparency, double refractiveIndex)
         :Shape(surfaceColor, emissionColor, transparency, refractiveIndex){
 
     this->center = Vec3(center);
     this->radius = radius;
     this->radiusSquared = radius * radius;
+    if (radius <= Vec3::EPSILON) {
+        throw std::invalid_argument("Sphere radius must be positive.");
+    }
 }
 
-Vec3* Sphere::getRayIntersection(const Vec3 &rayOrigin, const Vec3 &rayDirection) const{
+bool Sphere::intersect(const Ray& ray, double minDistance,
+                       double maxDistance, HitRecord& hit) const {
+    const Vec3 originToCenter = ray.origin() - center;
+    const double halfB = originToCenter.dot(ray.direction());
+    const double c = originToCenter.dot(originToCenter) - radiusSquared;
+    const double discriminant = halfB * halfB - c;
 
-    Vec3 rayDir = rayDirection.normalize();
-    Vec3 centerToRay = center - rayOrigin;
-
-    Vec3 projection = centerToRay.projectOnto(rayDir) + rayOrigin;
-
-    double intersectDistance = centerToRay.dot(rayDir);
-    if (intersectDistance <= 0)
-    {
-        return nullptr;
+    if (discriminant < 0.0) {
+        return false;
     }
-    //project origin to origin onto ray
-    double perpendicularSquared = centerToRay.dot(centerToRay) - intersectDistance * intersectDistance;
-    if (perpendicularSquared > radiusSquared){
-        return nullptr;
+
+    const double squareRoot = std::sqrt(discriminant);
+    double root = -halfB - squareRoot;
+    if (root < minDistance || root > maxDistance) {
+        root = -halfB + squareRoot;
+        if (root < minDistance || root > maxDistance) {
+            return false;
+        }
     }
-    //half the distance that the ray will travel inside the sphere
-    double dist = sqrt(radiusSquared - perpendicularSquared);
 
-    return new Vec3(projection - rayDir * dist);
-}
-
-Vec3 Sphere::getNormal(const Vec3 &point) const {
-    Vec3 normal = point - center;
-
-    return normal.normalize();
+    hit.distance = root;
+    hit.point = ray.at(root);
+    hit.setFaceNormal(ray, (hit.point - center) / radius);
+    hit.shape = this;
+    return true;
 }

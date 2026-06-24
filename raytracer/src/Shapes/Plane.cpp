@@ -3,32 +3,35 @@
 //
 
 #include "Plane.h"
+#include <cmath>
+#include <stdexcept>
 
-Plane::Plane(Vec3 normal, Vec3 point, Vec3 surfaceColor, Vec3 emissionColor, double transparency, double refractiveIndex)
+Plane::Plane(const Vec3& normal, const Vec3& point, const Vec3& surfaceColor,
+             const Vec3& emissionColor, double transparency,
+             double refractiveIndex)
     :Shape(surfaceColor, emissionColor, transparency, refractiveIndex) {
+    if (normal.getLength() <= Vec3::EPSILON) {
+        throw std::invalid_argument("Plane normal must be non-zero.");
+    }
     this->normal = normal.normalize();
     this->point = point;
 }
 
-Vec3* Plane::getRayIntersection(const Vec3 &rayOrigin, const Vec3 &rayDirection) const{
-
-    Vec3 rayDir = rayDirection.normalize();
-    double var = normal.dot(rayDirection);
-    if (var > Vec3::EPISLON){
-        Vec3 rayToPlane = point - rayOrigin;
-        double dist = rayToPlane.dot(normal) / var;
-        if (dist >= 0){
-            Vec3* ret = new Vec3(rayDirection * dist + rayOrigin);
-            return ret;
-        }
+bool Plane::intersect(const Ray& ray, double minDistance,
+                      double maxDistance, HitRecord& hit) const {
+    const double denominator = normal.dot(ray.direction());
+    if (std::abs(denominator) <= Vec3::EPSILON) {
+        return false;
     }
-    return nullptr;
-}
 
-
-Vec3 Plane::getNormal(const Vec3 &point) const {
-    if (point.dot(normal) == 0){
-        return Vec3();
+    const double distance = (point - ray.origin()).dot(normal) / denominator;
+    if (distance < minDistance || distance > maxDistance) {
+        return false;
     }
-    return normal;
+
+    hit.distance = distance;
+    hit.point = ray.at(distance);
+    hit.setFaceNormal(ray, normal);
+    hit.shape = this;
+    return true;
 }

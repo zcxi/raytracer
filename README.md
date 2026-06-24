@@ -1,39 +1,50 @@
 # raytracer
 
-Graphical renderer that uses vector math to simulate light ray projections.
+A small C++11 ray tracer being evolved into a physically based path tracer.
+Version 0.2 establishes a correctness-focused foundation with robust ray
+intervals, hit records, camera orientation, linear color, sRGB output, portable
+builds, and automated tests.
 
+## Building
 
-### Programming Language
-This project is written in C++11
+The project uses CMake 3.16 or newer and a C++11 compiler.
 
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
-### Directory Structure
+Run the demo renderer with an optional output path:
 
-src/Math/ -- This folder contains vector math helpers including the implementations of a quarternion class and a 3d vector class
+```sh
+./build/raytracer output.ppm
+```
 
-src/Scene/ -- Contains implementation for recreating a scene including light sources and camera
+On multi-configuration generators such as Visual Studio, add
+`--config Release` to the build command and run the executable from the
+configuration subdirectory.
 
-src/Shapes/ -- Contains the implementation for various shapes in 3d space and helpers for calculating light ray intercepts
+Sanitizer instrumentation is available on GCC/Clang toolchains that ship the
+required runtimes:
 
-src/Writer/ -- Contains helpers for file IO operations
+```sh
+cmake -S . -B build-sanitize -DRAYTRACER_ENABLE_SANITIZERS=ON
+cmake --build build-sanitize
+ctest --test-dir build-sanitize --output-on-failure
+```
 
+## Source layout
 
-### Project status
-Project is feature complete and supports multithreaded rendering                                                                                                                      
-### Future Changes
-Post processing 
-- anti aliasing
-    - [wu's Algorithm](https://www.codeproject.com/Articles/13360/Antialiasing-Wu-Algorithm)
-- soft shadows
-    - [percentage-closer filtering](https://developer.nvidia.com/gpugems/gpugems2/part-ii-shading-lighting-and-shadows/chapter-17-efficient-soft-edged-shadows-using)
+- `raytracer/src/Math` — vectors, quaternions, and rays
+- `raytracer/src/Scene` — camera, scene traversal, and lights
+- `raytracer/src/Shapes` — spheres, planes, cubes, rectangular prisms,
+  square pyramids, and intersection records
+- `raytracer/src/Writer` — linear RGB to sRGB PPM output
+- `tests` — deterministic correctness tests
 
+See [ROADMAP.md](ROADMAP.md) for the path-tracing roadmap.
 
-### Sample Trace
+## Sample trace
 
 ![header image](/raytracer/output.png)
-
-
-### Building and Running
-To build with GCC or G++
-
-% g++ *.cpp -o Output

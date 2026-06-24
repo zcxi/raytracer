@@ -11,15 +11,14 @@
 class Sphere: public Shape {
 
     public:
-        Sphere(Vec3 center, double radius, Vec3 surfaceColor,
-               Vec3 emissionColor, double transparency, double refractiveIndex);
-        Vec3* getRayIntersection(const Vec3 &rayOrigin, const Vec3 &rayDirection) const;
-        Vec3 getNormal(const Vec3 &point) const;
+        Sphere(const Vec3& center, double radius, const Vec3& surfaceColor,
+               const Vec3& emissionColor, double transparency,
+               double refractiveIndex);
+        bool intersect(const Ray& ray, double minDistance,
+                       double maxDistance, HitRecord& hit) const override;
 
-        double getRadius() const {return radius;};
-        Vec3 getCenter() const {return center;};
-        Vec3 getSurfaceColor() const {return Shape::getSurfaceColor();};
-
+        double getRadius() const {return radius;}
+        const Vec3& getCenter() const {return center;}
     private:
         Vec3 center;
         double radius;

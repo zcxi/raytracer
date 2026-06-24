@@ -7,24 +7,28 @@
 
 
 #include "Light/LightSource.h"
-#include "Camera.h"
 #include "../shapes/Shape.h"
+#include "../Math/Ray.h"
+#include <memory>
 
 class Scene {
 
     public:
-        const std::vector<double> BACKGROUND_COLOR = {0,255,0};
-        const int RAY_DEPTH_LIMIT = 100;
+        static constexpr double RAY_EPSILON = 1e-4;
 
-        Scene();
+        explicit Scene(const Vec3& backgroundColor = Vec3(0.0, 0.0, 0.0));
 
-        Vec3 trace(const Vec3 &rayOrigin, const Vec3 &rayDirection, int depth) const;
-        void addShapes(const std::vector<Shape*>& shapes);
-        void addLights(const std::vector<LightSource*>& sources);
+        Vec3 trace(const Ray& ray) const;
+        bool findClosestHit(const Ray& ray, double minDistance,
+                            double maxDistance, HitRecord& hit) const;
+        bool isOccluded(const Ray& ray, double maxDistance) const;
+        void addShape(std::unique_ptr<Shape> shape);
+        void addLight(std::unique_ptr<LightSource> source);
 
     private:
-        std::vector<Shape*> shapes;
-        std::vector<LightSource*> lightSources;
+        Vec3 backgroundColor;
+        std::vector<std::unique_ptr<Shape>> shapes;
+        std::vector<std::unique_ptr<LightSource>> lightSources;
 };
 
 

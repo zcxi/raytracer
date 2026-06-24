@@ -7,10 +7,20 @@
 
 
 #include "../Math/Vec3.h"
+#include <string>
+#include <vector>
 
 class ImageWriter {
 public:
-    static bool write(std::vector<std::vector<Vec3>> &image);
+    explicit ImageWriter(const std::string& outputPath = "output.ppm")
+        : outputPath(outputPath) {}
+
+    bool write(const std::vector<std::vector<Vec3>>& image) const;
+    static double linearToSrgb(double linearValue);
+    static unsigned char toByte(double linearValue);
+
+private:
+    std::string outputPath;
 };
 
 

@@ -4,91 +4,89 @@
 
 #include <cmath>
 #include <algorithm>
-#include <iostream>
+#include <limits>
+#include <utility>
 #include "Scene.h"
 
-Scene::Scene(){
-    lightSources = std::vector<LightSource*>();
-    shapes = std::vector<Shape*>();
+constexpr double Scene::RAY_EPSILON;
+
+Scene::Scene(const Vec3& background)
+    : backgroundColor(background) {
 }
 
+bool Scene::findClosestHit(const Ray& ray, double minDistance,
+                           double maxDistance, HitRecord& closestHit) const {
+    bool foundHit = false;
+    double closestDistance = maxDistance;
+    HitRecord candidate;
 
-Vec3 Scene::trace(const Vec3 &rayOrigin, const Vec3 &rayDirection, int depth) const
-{
-    //std::cout << rayDirection.X() << rayDirection.Y() << rayDirection.Z() << " dir " << rayOrigin.X() << rayOrigin.Y()<< rayOrigin.Z();
-    Vec3* incidentPointPtr = nullptr;
-    Shape* incidentObjectPtr = nullptr;
-    Vec3 rayColor = Vec3();
-    double minDist = INFINITY;
-
-    for (auto object: shapes){
-        Vec3* intersectPointPtr = object->getRayIntersection(rayOrigin, rayDirection);
-
-        //check if we hit
-        if (intersectPointPtr != nullptr){
-
-            double dist = intersectPointPtr->distanceTo(rayOrigin);
-            if (dist < minDist) {
-
-                incidentObjectPtr = object;
-                minDist = dist;
-                incidentPointPtr = intersectPointPtr;
-            } else {
-                delete intersectPointPtr;
-                intersectPointPtr = nullptr;
-            }
+    for (const auto& object : shapes) {
+        if (object->intersect(ray, minDistance, closestDistance, candidate)) {
+            foundHit = true;
+            closestDistance = candidate.distance;
+            closestHit = candidate;
         }
     }
-    if (incidentPointPtr == nullptr){
-        return Vec3(BACKGROUND_COLOR);
-    }
-    for (auto lightSource: lightSources){
+    return foundHit;
+}
 
-        Vec3 rayDirection = lightSource->getPosition() - *incidentPointPtr;
-
-        bool obstructed = false;
-
-        for (auto shape: shapes){
-            //TODO check for obstuction by self
-            //TODO optimize by organizing objects by distance. possible boost r-tree
-            Vec3* intersectionPoint = shape->getRayIntersection(*incidentPointPtr, rayDirection);
-            if (intersectionPoint != nullptr){
-
-                if (*intersectionPoint == *incidentPointPtr){
-                    //TODO verify rounding errors don't break functionality
-                    continue;
-                }
-                if (intersectionPoint->distanceTo(*incidentPointPtr) <
-                    lightSource->getPosition().distanceTo(*incidentPointPtr)){
-
-                    obstructed = true;
-                    delete intersectionPoint;
-                    break;
-                }
-            }
+bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
+    HitRecord ignored;
+    for (const auto& object : shapes) {
+        if (object->intersect(ray, RAY_EPSILON, maxDistance, ignored)) {
+            return true;
         }
+    }
+    return false;
+}
 
-        if (obstructed){
+Vec3 Scene::trace(const Ray& ray) const {
+    const double pi = 3.14159265358979323846;
+    HitRecord hit;
+    if (!findClosestHit(ray, RAY_EPSILON,
+                        std::numeric_limits<double>::infinity(), hit)) {
+        return backgroundColor;
+    }
+
+    Vec3 rayColor = hit.shape->getEmissionColor();
+    for (const auto& lightSource : lightSources) {
+        const Vec3 pointToLight = lightSource->getPosition() - hit.point;
+        const double lightDistance = pointToLight.getLength();
+        if (lightDistance <= RAY_EPSILON) {
             continue;
         }
-        Vec3 lightDirection = (lightSource->getPosition() - *incidentPointPtr).normalize();
-        Vec3 pointColor = incidentObjectPtr->getSurfaceColor();
-        double angleIntensity = incidentObjectPtr->getNormal(*incidentPointPtr).dot(lightDirection);
-        double distanceIntensity = lightSource->getIncidentBrightness(*incidentPointPtr);
-        rayColor = rayColor + pointColor * angleIntensity * distanceIntensity;
 
+        const Vec3 lightDirection = pointToLight / lightDistance;
+        const double angleIntensity =
+            std::max(0.0, hit.normal.dot(lightDirection));
+        if (angleIntensity <= 0.0) {
+            continue;
+        }
+
+        const Vec3 shadowOrigin = hit.point + hit.normal * RAY_EPSILON;
+        const Ray shadowRay(shadowOrigin, lightDirection);
+        if (isOccluded(shadowRay, lightDistance - RAY_EPSILON)) {
+            continue;
+        }
+
+        const double distanceIntensity =
+            lightSource->getIncidentBrightness(hit.point);
+        const Vec3 incomingLight =
+            lightSource->getColor() * (angleIntensity * distanceIntensity);
+        rayColor = rayColor +
+            hit.shape->getSurfaceColor().elementwiseMultiply(incomingLight) / pi;
     }
-    //TODO implement recursive tracing
     return rayColor;
 }
 
-void Scene::addShapes(const std::vector<Shape*>& _shapes){
-    //reserve for performance
-    shapes.reserve(shapes.size() + _shapes.size());
-    shapes.insert(shapes.end(), _shapes.begin(), _shapes.end());
+void Scene::addShape(std::unique_ptr<Shape> shape) {
+    if (shape) {
+        shapes.push_back(std::move(shape));
+    }
 }
 
-void Scene::addLights(const std::vector<LightSource*>& sources){
-    lightSources.reserve(lightSources.size() + sources.size());
-    lightSources.insert(lightSources.end(), sources.begin(), sources.end());
+void Scene::addLight(std::unique_ptr<LightSource> source) {
+    if (source) {
+        lightSources.push_back(std::move(source));
+    }
 }

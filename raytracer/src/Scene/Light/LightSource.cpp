@@ -3,16 +3,20 @@
 //
 
 #include "LightSource.h"
+#include <stdexcept>
 
-LightSource::LightSource(Vec3 _position, Vec3 _color, double _intensity){
-
+LightSource::LightSource(const Vec3& _position, const Vec3& _color,
+                         double _intensity){
+    if (_intensity < 0.0) {
+        throw std::invalid_argument("Light intensity cannot be negative.");
+    }
     this->position = _position;
     this->color = _color;
     this->intensity = _intensity;
 }
 
 
-Vec3 LightSource::getPosition() const{
+const Vec3& LightSource::getPosition() const{
 
     return position;
 }
@@ -22,7 +26,7 @@ double LightSource::getIntensity() const{
 }
 
 
-Vec3 LightSource::getColor() const{
+const Vec3& LightSource::getColor() const{
 
     return color;
-};
+}

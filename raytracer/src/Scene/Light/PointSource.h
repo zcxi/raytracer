@@ -11,7 +11,7 @@
 class PointSource: public LightSource{
 
     public:
-        PointSource(Vec3 position, Vec3 color, double intensity);
+        PointSource(const Vec3& position, const Vec3& color, double intensity);
         double getIncidentBrightness(const Vec3 & incidentPosition) const override;
 };
 

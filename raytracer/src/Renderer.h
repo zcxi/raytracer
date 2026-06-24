@@ -8,29 +8,22 @@
 
 #include "Writer/ImageWriter.h"
 #include "Scene/Scene.h"
-#include <mutex>
+#include "Scene/Camera.h"
+#include <atomic>
 
 class Renderer {
 
-    const int MAX_COLOR_VALUE = 255;
-
     public:
-        Renderer(ImageWriter* imageWriter, Scene* scenePtr, Camera* camera);
+        Renderer(ImageWriter& imageWriter, const Scene& scene, const Camera& camera);
 
         void render();
 
 
     private:
-        ImageWriter* imageWriter;
-        Scene* scene;
-        Camera* camera;
-
-        std::vector<Vec3> rays;
-        std::vector<std::pair<int, int>> rayCoords;
-        std::mutex rays_mutex;
-        std::mutex frame_mutex;
+        ImageWriter& imageWriter;
+        const Scene& scene;
+        const Camera& camera;
         std::vector<std::vector<Vec3>> frameBuffer;
-        static void traceJob(Renderer* renderer);
 };
 
 

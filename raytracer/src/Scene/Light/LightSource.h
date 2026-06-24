@@ -11,10 +11,11 @@
 class LightSource {
 
     public:
-        LightSource(Vec3 position, Vec3 color, double intensity);
-        Vec3 getPosition() const;
+        LightSource(const Vec3& position, const Vec3& color, double intensity);
+        virtual ~LightSource() {}
+        const Vec3& getPosition() const;
         double getIntensity() const;
-        Vec3 getColor() const;
+        const Vec3& getColor() const;
 
         virtual double getIncidentBrightness(const Vec3 & pos) const = 0;
 

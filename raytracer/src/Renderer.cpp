@@ -2,98 +2,56 @@
 // Created by chenx on 2020-05-25.
 //
 
-#include <math.h>
-#include <cstdint>
-#include <iostream>
 #include <algorithm>
+#include <atomic>
+#include <stdexcept>
 #include "Renderer.h"
-#include "Math/Vec3.h"
-#include "Math/Quaternion.h"
 #include <thread>
 
-Renderer::Renderer(ImageWriter* imageWriter, Scene* scenePtr, Camera* camera){
-    this->imageWriter = imageWriter;
-    this->scene = scenePtr;
-    this->camera = camera;
+Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
+                   const Camera& cameraRef)
+    : imageWriter(writer), scene(sceneRef), camera(cameraRef) {
 }
 
 void Renderer::render(){
 
-    int height = camera->getImageHeight();
-    int width = camera->getImageWidth();
+    const int height = camera.getImageHeight();
+    const int width = camera.getImageWidth();
+    frameBuffer.assign(height, std::vector<Vec3>(width, Vec3()));
 
-    double fov = camera->getFov();
-    Vec3 cameraDirection = camera->GetDir();
+    const std::size_t pixelCount =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    std::atomic<std::size_t> nextPixel(0);
 
-    this->frameBuffer = std::vector<std::vector<Vec3>>(height, std::vector<Vec3>(width, Vec3()));
-    double fovScale = tan(fov * 0.5);
-    double aspectRatio = width / height;
-
-    double x = -1, y = -1, z= -1;
-    
-    for (int j = 0; j < height; ++j) {
-
-
-        for (int i = 0; i < width; ++i) {  
-            
-
-
-            y = (1 - 2 * (j + 0.5) / (double)height) * fovScale;
-
-            //map pixel coordinates to screen space
-            x = (2 * (i + 0.5) / (double)width - 1) * aspectRatio * fovScale;
-
-            Vec3 ray = Vec3(x, y, z);
-            
-            this->rays.push_back(ray);
-            this->rayCoords.push_back(std::make_pair(j, i));
-            
-        }
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) {
+        numThreads = 1;
     }
-
-    int numThreads = std::thread::hardware_concurrency();
+    numThreads = static_cast<unsigned int>(
+        std::min<std::size_t>(numThreads, pixelCount));
     std::vector<std::thread> pool;
+    pool.reserve(numThreads);
 
-    for (int i = 0; i < numThreads; i++)
-    {   
-        pool.push_back( std::thread(traceJob, this));
-        
+    for (unsigned int threadIndex = 0; threadIndex < numThreads; ++threadIndex) {
+        pool.emplace_back([this, width, pixelCount, &nextPixel]() {
+            while (true) {
+                const std::size_t index = nextPixel.fetch_add(1);
+                if (index >= pixelCount) {
+                    break;
+                }
+
+                const int row = static_cast<int>(index / width);
+                const int column = static_cast<int>(index % width);
+                const Ray ray = camera.makeRay(column + 0.5, row + 0.5);
+                frameBuffer[row][column] = scene.trace(ray);
+            }
+        });
     }
-    for (int i = 0; i < numThreads; i++)
-    {
-        pool[i].join();
-
-    }
-
-
-    imageWriter->write(this->frameBuffer);
-
-}
-
-void Renderer::traceJob(Renderer * renderer) {
-    
-    while (true) {
-        renderer->rays_mutex.lock();
-        if (renderer->rays.size() == 0) {
-            
-            renderer->rays_mutex.unlock();
-            break;
-        }
-        Vec3 ray = renderer->rays.back();
-        renderer->rays.pop_back();
-
-        int j = renderer->rayCoords.back().first;
-        int i = renderer->rayCoords.back().second;
-        renderer->rayCoords.pop_back();
-
-        renderer->rays_mutex.unlock();
-
-        ray = ray.normalize();
-        Vec3 pixel = renderer->scene->trace(renderer->camera->GetPos(), ray, 0);
-        renderer->frame_mutex.lock();
-        renderer->frameBuffer[j][i] = Vec3(std::min(renderer->MAX_COLOR_VALUE, (int)pixel.X()), std::min(renderer->MAX_COLOR_VALUE, (int)pixel.Y()), std::min(renderer->MAX_COLOR_VALUE, (int)pixel.Z()));
-        renderer->frame_mutex.unlock();
-
+    for (auto& worker : pool) {
+        worker.join();
     }
 
+    if (!imageWriter.write(frameBuffer)) {
+        throw std::runtime_error("Failed to write rendered image.");
+    }
 }

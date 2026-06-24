@@ -13,7 +13,7 @@ class Quaternion {
 public:
 
     //Constructor
-    Quaternion(double s, Vec3 v);
+    Quaternion(double s, const Vec3& v);
 
     Quaternion operator*(const Quaternion& rhs) const;
 
@@ -24,8 +24,8 @@ public:
 
     static Vec3 rotateVector(const Vec3& vector, const double& angleRadians, const Vec3& axis);
 
-    double S(){return s;}
-    Vec3 V(){return v;}
+    double S() const {return s;}
+    const Vec3& V() const {return v;}
 
 private:
     //q = s + v
