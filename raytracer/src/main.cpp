@@ -34,6 +34,7 @@ struct CommandLineOptions {
     double focusDistance;
     double shutterOpen;
     double shutterClose;
+    std::string scene;
 
     CommandLineOptions()
         : outputPath("output.ppm"),
@@ -45,7 +46,8 @@ struct CommandLineOptions {
           aperture(0.35),
           focusDistance(58.0),
           shutterOpen(0.0),
-          shutterClose(1.0) {
+          shutterClose(1.0),
+          scene("demo") {
     }
 };
 
@@ -111,7 +113,8 @@ void printUsage() {
         << "  --aperture N      Lens aperture diameter (default: 0.35)\n"
         << "  --focus N         Focus distance (default: 58)\n"
         << "  --shutter-open N  Shutter start time (default: 0)\n"
-        << "  --shutter-close N Shutter end time (default: 1)\n";
+        << "  --shutter-close N Shutter end time (default: 1)\n"
+        << "  --scene NAME      Scene to render: demo, chessboard (default: demo)\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -181,6 +184,8 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
             options.shutterOpen = std::stod(value);
         } else if (argument == "--shutter-close") {
             options.shutterClose = std::stod(value);
+        } else if (argument == "--scene") {
+            options.scene = value;
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
@@ -287,12 +292,104 @@ void demo1(const CommandLineOptions& options) {
     render.render();
 }
 
+void chessboard(const CommandLineOptions& options) {
+    const double pi = 3.14159265358979323846;
+    const double boardCenterZ = -28.0;
+    Scene scene;
+    Environment environment(
+        Vec3(0.02, 0.02, 0.04),
+        Vec3(0.0, 0.0, 0.0),
+        options.environmentIntensity);
+    if (!options.environmentMap.empty() &&
+        !environment.loadPpm(
+            options.environmentMap, options.environmentIntensity)) {
+        throw std::runtime_error(
+            "Failed to load environment map " +
+            options.environmentMap + ".");
+    }
+    scene.setEnvironment(environment);
+    scene.setAccelerationEnabled(options.accelerationEnabled);
+
+    const std::shared_ptr<Texture> checker(
+        new CheckerTexture(
+            Vec3(0.92, 0.91, 0.88),
+            Vec3(0.08, 0.08, 0.12), pi * 0.5));
+
+    scene.addShape(std::unique_ptr<Shape>(
+        new Plane(Vec3(0, 1, 0), Vec3(0, -0.5, boardCenterZ),
+                  Material::principled(
+                      Vec3(0.5, 0.5, 0.5),
+                      0.65, 0.0, 0.0).withTexture(checker))));
+
+    const double pieceY = -0.5;
+    auto piece = [&](double x, double z, double radius, double height,
+                     const Vec3& color, double metallic = 0.0) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, pieceY + radius, z), radius,
+                       Material::principled(
+                           color, 0.35, metallic, 0.0))));
+        (void)height;
+    };
+
+    piece(-6, boardCenterZ - 6.5, 0.45, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece(-2, boardCenterZ - 6.5, 0.40, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece( 2, boardCenterZ - 6.5, 0.38, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece( 6, boardCenterZ - 6.5, 0.42, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece(-6, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece(-2, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece( 2, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
+    piece( 6, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
+
+    piece(-6, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece(-2, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece( 2, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece( 6, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece(-6, boardCenterZ + 6.5, 0.45, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece(-2, boardCenterZ + 6.5, 0.40, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece( 2, boardCenterZ + 6.5, 0.38, 0.0, Vec3(0.04, 0.04, 0.08));
+    piece( 6, boardCenterZ + 6.5, 0.42, 0.0, Vec3(0.04, 0.04, 0.08));
+
+    scene.addShape(std::unique_ptr<Shape>(
+        new Rectangle(
+            Vec3(0, 8, boardCenterZ), Vec3(0, -1, 0),
+            Vec3(0, 0, -1), 14, 3,
+            Material::diffuse(
+                Vec3(0.0, 0.0, 0.0),
+                Vec3(12.0, 11.0, 9.0)))));
+
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(Vec3(8, 3, boardCenterZ + 8), 2.0,
+                   Material::principled(
+                       Vec3(0.92, 0.95, 1.0),
+                       0.08, 1.0, 0.0))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(Vec3(-8, 2.2, boardCenterZ + 7), 1.8,
+                   Material::principled(
+                       Vec3(0.98, 0.99, 1.0),
+                       0.03, 0.0, 1.0, 1.5))));
+
+    scene.finalize();
+
+    Camera camera(Vec3(5, 3.5, 0), Vec3(-0.14, 0.17, 0.03),
+                  800, 600, pi / 5,
+                  options.aperture, options.focusDistance,
+                  options.shutterOpen, options.shutterClose);
+    ImageWriter imageWriter(options.outputPath, options.outputSettings);
+    Renderer render(
+        imageWriter, scene, camera, options.renderSettings);
+    render.render();
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     try {
         const CommandLineOptions options = parseArguments(argc, argv);
-        demo1(options);
+        if (options.scene == "chessboard") {
+            chessboard(options);
+        } else {
+            demo1(options);
+        }
         std::cout << "Wrote " << options.outputPath << std::endl;
         return 0;
     } catch (const std::exception& error) {
