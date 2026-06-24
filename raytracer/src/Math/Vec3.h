@@ -5,6 +5,7 @@
 #ifndef RAYTRACER_VEC3_H
 #define RAYTRACER_VEC3_H
 
+#include <array>
 #include <vector>
 
 class Vec3
@@ -37,13 +38,17 @@ public:
     double distanceTo(const Vec3& to) const;
     bool near(const Vec3& rhs, double epsilon = EPSILON) const;
 
-    double X() const {return this->coord[0];}
-    double Y() const {return this->coord[1];}
-    double Z() const {return this->coord[2];}
-    const std::vector<double>& getCoords() const {return this->coord;}
+    double X() const { return x; }
+    double Y() const { return y; }
+    double Z() const { return z; }
+    std::array<double, 3> getCoords() const {
+        return {{x, y, z}};
+    }
 
 private:
-    std::vector<double> coord;
+    double x;
+    double y;
+    double z;
 
 
 };

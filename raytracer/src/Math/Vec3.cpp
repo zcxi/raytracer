@@ -9,50 +9,53 @@
 constexpr double Vec3::EPSILON;
 constexpr double Vec3::EPISLON;
 
-Vec3::Vec3() : coord(3, 0.0) {}
+Vec3::Vec3() : x(0.0), y(0.0), z(0.0) {}
 
-Vec3::Vec3(double x, double y , double z) : coord{x, y, z} {}
+Vec3::Vec3(double xValue, double yValue, double zValue)
+    : x(xValue), y(yValue), z(zValue) {}
 
-Vec3::Vec3(const std::vector<double>& coordinates) : coord(coordinates) {
+Vec3::Vec3(const std::vector<double>& coordinates)
+    : x(0.0), y(0.0), z(0.0) {
     if (coordinates.size() != 3) {
         throw std::invalid_argument("Vec3 requires exactly three coordinates.");
     }
+    x = coordinates[0];
+    y = coordinates[1];
+    z = coordinates[2];
 }
 
 bool Vec3::operator== (const Vec3 &rhs) const {
 
-    return coord == rhs.coord;
+    return x == rhs.x && y == rhs.y && z == rhs.z;
 }
 
 bool Vec3::operator != (const Vec3 &rhs) const{
 
-    return coord != rhs.coord;
+    return !(*this == rhs);
 }
 
 Vec3 Vec3::operator + (const Vec3 &rhs) const{
 
-    std::vector<double> sum = {coord[0] + rhs.coord[0], coord[1] + rhs.coord[1], coord[2] + rhs.coord[2]};
-    return Vec3(sum);
+    return Vec3(x + rhs.x, y + rhs.y, z + rhs.z);
 }
 
 Vec3 Vec3::operator - (const Vec3 &rhs) const{
 
-    std::vector<double> sum = {coord[0] - rhs.coord[0], coord[1] - rhs.coord[1], coord[2] - rhs.coord[2]};
-    return Vec3(sum);
+    return Vec3(x - rhs.x, y - rhs.y, z - rhs.z);
 }
 Vec3 Vec3::operator * (const double &scalar) const{
 
-    return Vec3(scalar* coord[0], scalar* coord[1], scalar* coord[2]);
+    return Vec3(scalar * x, scalar * y, scalar * z);
 }
 Vec3 Vec3::elementwiseMultiply (const Vec3 &rhs) const{
 
-    return Vec3(coord[0]* rhs.X(), coord[1]* rhs.Y(), coord[2]* rhs.Z());
+    return Vec3(x * rhs.x, y * rhs.y, z * rhs.z);
 }
 Vec3 Vec3::operator / (const double &scalar) const{
     if (std::abs(scalar) <= EPSILON) {
         throw std::invalid_argument("Cannot divide a vector by zero.");
     }
-    return Vec3(coord[0] / scalar, coord[1] / scalar, coord[2] / scalar);
+    return Vec3(x / scalar, y / scalar, z / scalar);
 }
 Vec3 Vec3::operator - () const {
     return Vec3(-X(), -Y(), -Z());
@@ -61,12 +64,15 @@ Vec3 Vec3::operator - () const {
 
 double Vec3::dot(const Vec3 &rhs) const{
 
-    return  coord[0] * rhs.coord[0] + coord[1] * rhs.coord[1] + coord[2] * rhs.coord[2];
+    return x * rhs.x + y * rhs.y + z * rhs.z;
 }
 
 Vec3 Vec3::cross(const Vec3 &rhs) const{
 
-    return Vec3(coord[1] * rhs.coord[2] - coord[2] * rhs.coord[1], coord[2] * rhs.coord[0] - coord[0] * rhs.coord[2], coord[0] * rhs.coord[1] - coord[1] * rhs.coord[0]);
+    return Vec3(
+        y * rhs.z - z * rhs.y,
+        z * rhs.x - x * rhs.z,
+        x * rhs.y - y * rhs.x);
 }
 
 Vec3 Vec3::projectOnto(const Vec3 &rhs) const{
@@ -82,7 +88,7 @@ Vec3 Vec3::normalize() const{
     double length = getLength();
     if (length > 0) {
 
-        return Vec3(coord[0]/ length, coord[1]/ length, coord[2]/ length);
+        return Vec3(x / length, y / length, z / length);
     }
     //TODO else throw exception on usage of invalid vec3
     return Vec3();
@@ -90,7 +96,7 @@ Vec3 Vec3::normalize() const{
 
 double Vec3::getLength() const {
 
-    return sqrt(coord[0] * coord[0] + coord[1] * coord[1]+ coord[2] * coord[2]);
+    return std::sqrt(x * x + y * y + z * z);
 }
 
 double Vec3::distanceTo(const Vec3& to) const{

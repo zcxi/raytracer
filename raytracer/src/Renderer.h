@@ -10,8 +10,12 @@
 #include "Scene/Scene.h"
 #include "Scene/Camera.h"
 #include "Math/Sampler.h"
+#include "Diagnostics/TraceStats.h"
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
+#include <thread>
 
 struct RenderSettings {
     unsigned int samplesPerPixel;
@@ -45,6 +49,7 @@ class Renderer {
         Renderer(ImageWriter& imageWriter, const Scene& scene,
                  const Camera& camera,
                  const RenderSettings& settings = RenderSettings());
+        ~Renderer();
 
         void render();
         static double sampleOffset(std::size_t pixelIndex,
@@ -55,14 +60,29 @@ class Renderer {
 
     private:
         double renderPass(unsigned int sampleIndex);
-        std::vector<std::vector<Vec3>> averagedFrame(
-            unsigned int completedSamples) const;
+        void startWorkers();
+        void stopWorkers();
+        void workerLoop(unsigned int workerIndex);
+        void renderTiles(unsigned int sampleIndex, TraceStats& stats);
+        TraceStats combinedStats() const;
 
         ImageWriter& imageWriter;
         const Scene& scene;
         const Camera& camera;
         RenderSettings settings;
         std::vector<std::vector<Vec3>> accumulationBuffer;
+        std::vector<std::thread> workers;
+        std::vector<TraceStats> workerStats;
+        std::atomic<std::size_t> nextTile;
+        std::mutex workMutex;
+        std::condition_variable workAvailable;
+        std::condition_variable passFinished;
+        bool stopping;
+        std::size_t workGeneration;
+        unsigned int activeWorkers;
+        unsigned int currentSample;
+        unsigned int tilesX;
+        std::size_t tileCount;
 };
 
 

@@ -250,7 +250,71 @@ textured surfaces.
 - Added tests for lens sampling, shutter time, motion, UV interpolation, texture
   loading, OBJ triangulation, transformed intersections, and bounds.
 
-### Phase 8: Quality of life improvements
+## Phase 8: Performance Quick Wins
+
+**Status: completed for v1.1 on June 24, 2026.**
+
+This milestone focuses on high-impact changes with relatively low implementation
+risk. Every optimization must preserve deterministic output and be supported by
+before/after benchmarks.
+
+### Required work
+
+1. Replace `Vec3`'s dynamic `std::vector<double>` storage with three direct
+   numeric members.
+2. Stop rebuilding the scene BVH after every `addShape()` call. Add a scene
+   `finalize()` step that builds acceleration structures once after scene setup.
+3. Build a mesh-local BVH inside `ObjMesh` instead of testing every triangle.
+4. Keep render worker threads alive for the full render instead of creating and
+   joining them once per sample pass.
+5. Avoid copying the full framebuffer for progressive output. Normalize and
+   tone-map directly from the accumulation buffer using the completed sample
+   count.
+6. Add lightweight counters for rays, AABB tests, primitive tests, BVH nodes,
+   shadow rays, and average path depth.
+
+### Stretch work
+
+- Traverse the nearer BVH child first to improve pruning.
+- Add variance tracking as groundwork for adaptive sampling.
+- Store mesh vertices and triangles in more cache-friendly contiguous arrays.
+
+### Acceptance criteria
+
+- Debug and Release tests remain green.
+- Identical seeds produce byte-identical images before and after optimization.
+- BVH and brute-force diagnostic renders remain byte-identical.
+- No per-vector heap allocation remains in rendering hot paths.
+- No worker thread is created inside an individual sample pass.
+- The standard benchmark scene renders at least 2x faster than the v1.0 baseline.
+- A mesh-heavy benchmark shows a substantially larger speedup than the simple
+  primitive scene.
+- Benchmark results and tracing counters are printed or saved in a reproducible
+  format.
+
+### Delivered in v1.1
+
+- Replaced heap-backed `Vec3` values with three inline doubles.
+- Deferred scene BVH construction until `finalize()` and retained safe lazy
+  finalization for direct scene queries.
+- Added a mesh-local BVH for OBJ triangles and a diagnostic linear traversal.
+- Kept worker threads alive for the complete render instead of recreating them
+  for every sample pass.
+- Wrote progressive images directly from the accumulation buffer without a
+  normalized framebuffer copy.
+- Added per-worker counters for rays, shadow rays, AABB tests, primitive tests,
+  BVH node visits, paths, and average path depth.
+- Removed per-ray heap allocation from BVH traversal.
+- Fixed a C++11 evaluation-order bug that could corrupt recursive BVH child
+  indices after vector reallocation.
+- Added deterministic regression coverage for deferred finalization, recursive
+  BVH construction, mesh acceleration, counters, and byte-identical progressive
+  output.
+- Added a reproducible benchmark executable and recorded standard-scene and
+  mesh-heavy results in `BENCHMARKS.md`.
+
+### Phase 9: Quality of life improvements
+
 - Add a table to set objects on
 - Add output format in png or jpeg
 - Explore the use of Gpu Accelerated tracing
@@ -282,5 +346,9 @@ Phase 5 completed June 24, 2026.
 Phase 6 completed June 24, 2026.
 
 ### v1.0 — Scene-Capable Renderer
+
+Completed June 24, 2026.
+
+### v1.1 — Performance Quick Wins
 
 Completed June 24, 2026.

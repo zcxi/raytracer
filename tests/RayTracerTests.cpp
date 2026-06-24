@@ -5,6 +5,7 @@
 #include "Materials/Bsdf.h"
 #include "Acceleration/Aabb.h"
 #include "Acceleration/Bvh.h"
+#include "Diagnostics/TraceStats.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Environment.h"
@@ -68,6 +69,8 @@ void expectThrows(const std::function<void()>& action,
 }
 
 void testVectorMath() {
+    expect(sizeof(Vec3) == sizeof(double) * 3,
+           "Vec3 stores exactly three inline doubles.");
     expectVecNear(Vec3(6.0, 9.0, 12.0) / 3.0, Vec3(2.0, 3.0, 4.0),
                   1e-9, "Vector division divides components by the scalar.");
     expectVecNear(Vec3(2.0, 2.0, 0.0).projectOnto(Vec3(1.0, 0.0, 0.0)),
@@ -83,6 +86,101 @@ void testVectorMath() {
         const Vec3 invalid(std::vector<double>{1.0, 2.0});
         (void)invalid;
     }, "Vec3 rejects coordinate arrays with the wrong size.");
+}
+
+std::vector<unsigned char> readBytes(const std::string& path) {
+    std::ifstream input(path.c_str(), std::ios::binary);
+    return std::vector<unsigned char>(
+        std::istreambuf_iterator<char>(input),
+        std::istreambuf_iterator<char>());
+}
+
+void testPerformanceQuickWins() {
+    Scene scene;
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(
+            Vec3(-1.0, 0.0, -5.0), 1.0,
+            Material::diffuse(Vec3(1.0, 0.0, 0.0)))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(
+            Vec3(1.0, 0.0, -5.0), 1.0,
+            Material::diffuse(Vec3(0.0, 1.0, 0.0)))));
+    expect(scene.bvhBuildCount() == 0,
+           "Adding shapes defers scene BVH construction.");
+    scene.finalize();
+    expect(scene.bvhBuildCount() == 1,
+           "Scene finalization builds the BVH once.");
+    scene.finalize();
+    expect(scene.bvhBuildCount() == 1,
+           "Repeated finalization does not rebuild a clean BVH.");
+
+    Scene recursiveScene;
+    for (int index = 0; index < 8; ++index) {
+        recursiveScene.addShape(std::unique_ptr<Shape>(
+            new Sphere(
+                Vec3(static_cast<double>(index) * 3.0 - 10.5,
+                     0.0, -8.0),
+                1.0,
+                Material::diffuse(Vec3(0.5, 0.5, 0.5)))));
+    }
+    recursiveScene.finalize();
+    for (int index = 0; index < 8; ++index) {
+        const Ray ray(
+            Vec3(static_cast<double>(index) * 3.0 - 10.5,
+                 0.0, 0.0),
+            Vec3(0.0, 0.0, -1.0));
+        HitRecord accelerated;
+        HitRecord brute;
+        recursiveScene.setAccelerationEnabled(true);
+        const bool acceleratedFound = recursiveScene.findClosestHit(
+            ray, 1e-4, 100.0, accelerated);
+        recursiveScene.setAccelerationEnabled(false);
+        const bool bruteFound = recursiveScene.findClosestHit(
+            ray, 1e-4, 100.0, brute);
+        expect(acceleratedFound == bruteFound &&
+                   accelerated.distance == brute.distance,
+               "Recursive BVH construction matches brute-force traversal.");
+    }
+
+    const std::string objPath = "test-performance-mesh.obj";
+    {
+        std::ofstream obj(objPath.c_str());
+        obj << "v -1 -1 -5\nv 1 -1 -5\nv 1 1 -5\nv -1 1 -5\n";
+        obj << "f 1 2 3 4\n";
+    }
+    ObjMesh mesh(objPath, Material::diffuse(Vec3(0.5, 0.5, 0.5)));
+    expect(mesh.bvhNodeCount() > 0,
+           "OBJ meshes build a local triangle BVH.");
+    TraceStats stats;
+    {
+        TraceStatsScope scope(&stats);
+        HitRecord hit;
+        expect(mesh.intersect(
+                   Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+                   1e-4, 100.0, hit),
+               "Mesh BVH preserves triangle intersections.");
+    }
+    expect(stats.aabbTests > 0 && stats.bvhNodeVisits > 0 &&
+               stats.primitiveTests > 0,
+           "Mesh traversal contributes reproducible tracing counters.");
+    std::remove(objPath.c_str());
+
+    const std::string averagedPath = "test-averaged.ppm";
+    const std::string accumulationPath = "test-accumulation.ppm";
+    const std::vector<std::vector<Vec3>> averaged(
+        1, std::vector<Vec3>(2, Vec3(0.25, 0.5, 0.75)));
+    const std::vector<std::vector<Vec3>> accumulation(
+        1, std::vector<Vec3>(2, Vec3(1.0, 2.0, 3.0)));
+    ImageWriter averagedWriter(averagedPath);
+    ImageWriter accumulationWriter(accumulationPath);
+    expect(averagedWriter.write(averaged),
+           "Regular image output succeeds.");
+    expect(accumulationWriter.writeAccumulation(accumulation, 4),
+           "Accumulation output succeeds without a framebuffer copy.");
+    expect(readBytes(averagedPath) == readBytes(accumulationPath),
+           "Direct accumulation output is byte-identical to averaged output.");
+    std::remove(averagedPath.c_str());
+    std::remove(accumulationPath.c_str());
 }
 
 void testQuaternionRotation() {
@@ -768,6 +866,12 @@ void testSceneCapabilityFeatures() {
                Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
                1e-4, 100.0, meshHit),
            "Loaded OBJ mesh participates in intersections.");
+    HitRecord bruteMeshHit;
+    expect(mesh.intersectBruteForce(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, bruteMeshHit) &&
+               meshHit.distance == bruteMeshHit.distance,
+           "Mesh-local BVH agrees with brute-force triangles.");
     std::remove(objPath.c_str());
 
     Transform transformed(
@@ -808,6 +912,7 @@ int main() {
         testAreaLightsAndEnvironment();
         testAccelerationStructures();
         testSceneCapabilityFeatures();
+        testPerformanceQuickWins();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

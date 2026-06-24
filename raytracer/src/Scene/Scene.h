@@ -41,11 +41,16 @@ class Scene {
         bool isOccluded(const Ray& ray, double maxDistance) const;
         void addShape(std::unique_ptr<Shape> shape);
         void addLight(std::unique_ptr<LightSource> source);
+        void finalize() const;
         void setEnvironment(const Environment& environment);
         void setAccelerationEnabled(bool enabled) {
             accelerationEnabled = enabled;
         }
-        std::size_t bvhNodeCount() const { return bvh.nodeCount(); }
+        std::size_t bvhNodeCount() const {
+            finalize();
+            return bvh.nodeCount();
+        }
+        std::size_t bvhBuildCount() const { return accelerationBuildCount; }
         std::size_t boundedShapeCount() const {
             return boundedShapes.size();
         }
@@ -78,7 +83,9 @@ class Scene {
         std::vector<const Shape*> unboundedShapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;
         std::vector<const Shape*> emissiveShapes;
-        Bvh bvh;
+        mutable Bvh bvh;
+        mutable bool accelerationDirty;
+        mutable std::size_t accelerationBuildCount;
         bool accelerationEnabled;
 };
 

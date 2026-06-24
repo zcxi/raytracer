@@ -7,6 +7,7 @@
 #include <limits>
 #include <utility>
 #include "Scene.h"
+#include "../Diagnostics/TraceStats.h"
 
 constexpr double Scene::RAY_EPSILON;
 
@@ -16,11 +17,14 @@ Scene::Scene(const Vec3& background)
       unboundedShapes(),
       emissiveShapes(),
       bvh(),
+      accelerationDirty(false),
+      accelerationBuildCount(0),
       accelerationEnabled(true) {
 }
 
 bool Scene::findClosestHit(const Ray& ray, double minDistance,
                            double maxDistance, HitRecord& closestHit) const {
+    finalize();
     bool foundHit = false;
     if (accelerationEnabled) {
         foundHit =
@@ -29,6 +33,10 @@ bool Scene::findClosestHit(const Ray& ray, double minDistance,
         HitRecord candidate;
         double closest = maxDistance;
         for (const Shape* shape : boundedShapes) {
+            TraceStats* stats = currentTraceStats();
+            if (stats) {
+                ++stats->primitiveTests;
+            }
             if (shape->intersect(
                     ray, minDistance, closest, candidate)) {
                 closest = candidate.distance;
@@ -42,6 +50,10 @@ bool Scene::findClosestHit(const Ray& ray, double minDistance,
     HitRecord candidate;
 
     for (const Shape* object : unboundedShapes) {
+        TraceStats* stats = currentTraceStats();
+        if (stats) {
+            ++stats->primitiveTests;
+        }
         if (object->intersect(ray, minDistance, closestDistance, candidate)) {
             foundHit = true;
             closestDistance = candidate.distance;
@@ -52,6 +64,12 @@ bool Scene::findClosestHit(const Ray& ray, double minDistance,
 }
 
 bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
+    TraceStats* stats = currentTraceStats();
+    if (stats) {
+        ++stats->rays;
+        ++stats->shadowRays;
+    }
+    finalize();
     if (accelerationEnabled) {
         if (bvh.occluded(ray, RAY_EPSILON, maxDistance)) {
             return true;
@@ -59,6 +77,9 @@ bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
     } else {
         HitRecord hit;
         for (const Shape* shape : boundedShapes) {
+            if (stats) {
+                ++stats->primitiveTests;
+            }
             if (shape->getMaterial().transmission <= 0.0 &&
                 shape->intersect(
                     ray, RAY_EPSILON, maxDistance, hit)) {
@@ -68,6 +89,9 @@ bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
     }
     HitRecord ignored;
     for (const Shape* object : unboundedShapes) {
+        if (stats) {
+            ++stats->primitiveTests;
+        }
         if (object->intersect(ray, RAY_EPSILON, maxDistance, ignored)) {
             if (object->getMaterial().transmission <= 0.0) {
                 return true;
@@ -278,9 +302,17 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
     Vec3 previousPoint;
     double previousBsdfPdf = 0.0;
     bool previousWasDelta = true;
+    TraceStats* stats = currentTraceStats();
+    if (stats) {
+        ++stats->paths;
+    }
 
     for (unsigned int bounce = 0;
          bounce < settings.maxBounces; ++bounce) {
+        if (stats) {
+            ++stats->rays;
+            ++stats->pathVertices;
+        }
         HitRecord hit;
         if (!findClosestHit(
                 currentRay, RAY_EPSILON,
@@ -363,7 +395,15 @@ void Scene::addShape(std::unique_ptr<Shape> shape) {
             emissiveShapes.push_back(shape.get());
         }
         shapes.push_back(std::move(shape));
+        accelerationDirty = true;
+    }
+}
+
+void Scene::finalize() const {
+    if (accelerationDirty) {
         bvh.build(boundedShapes);
+        accelerationDirty = false;
+        ++accelerationBuildCount;
     }
 }
 

@@ -1,6 +1,8 @@
 #include "Bvh.h"
+#include "../Diagnostics/TraceStats.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 
 namespace {
@@ -72,8 +74,10 @@ int Bvh::buildNode(std::size_t start, std::size_t end) {
     for (std::size_t index = start; index < end; ++index) {
         orderedShapes[index]->boundingBox(shapeBounds[index]);
     }
-    nodes[nodeIndex].left = buildNode(start, middle);
-    nodes[nodeIndex].right = buildNode(middle, end);
+    const int left = buildNode(start, middle);
+    const int right = buildNode(middle, end);
+    nodes[nodeIndex].left = left;
+    nodes[nodeIndex].right = right;
     return nodeIndex;
 }
 
@@ -84,16 +88,24 @@ bool Bvh::intersect(const Ray& ray, double minDistance,
     }
     bool found = false;
     double closest = maxDistance;
-    std::vector<int> stack(1, 0);
-    while (!stack.empty()) {
-        const int index = stack.back();
-        stack.pop_back();
+    std::array<int, 64> stack;
+    std::size_t stackSize = 1;
+    stack[0] = 0;
+    while (stackSize > 0) {
+        const int index = stack[--stackSize];
+        TraceStats* stats = currentTraceStats();
+        if (stats) {
+            ++stats->bvhNodeVisits;
+        }
         const Node& node = nodes[index];
         if (!node.bounds.intersect(ray, minDistance, closest)) {
             continue;
         }
         if (node.isLeaf()) {
             for (std::size_t offset = 0; offset < node.count; ++offset) {
+                if (stats) {
+                    ++stats->primitiveTests;
+                }
                 HitRecord candidate;
                 if (orderedShapes[node.start + offset]->intersect(
                         ray, minDistance, closest, candidate)) {
@@ -103,8 +115,8 @@ bool Bvh::intersect(const Ray& ray, double minDistance,
                 }
             }
         } else {
-            stack.push_back(node.left);
-            stack.push_back(node.right);
+            stack[stackSize++] = node.left;
+            stack[stackSize++] = node.right;
         }
     }
     return found;
@@ -115,16 +127,24 @@ bool Bvh::occluded(const Ray& ray, double minDistance,
     if (nodes.empty()) {
         return false;
     }
-    std::vector<int> stack(1, 0);
-    while (!stack.empty()) {
-        const int index = stack.back();
-        stack.pop_back();
+    std::array<int, 64> stack;
+    std::size_t stackSize = 1;
+    stack[0] = 0;
+    while (stackSize > 0) {
+        const int index = stack[--stackSize];
+        TraceStats* stats = currentTraceStats();
+        if (stats) {
+            ++stats->bvhNodeVisits;
+        }
         const Node& node = nodes[index];
         if (!node.bounds.intersect(ray, minDistance, maxDistance)) {
             continue;
         }
         if (node.isLeaf()) {
             for (std::size_t offset = 0; offset < node.count; ++offset) {
+                if (stats) {
+                    ++stats->primitiveTests;
+                }
                 const Shape* shape = orderedShapes[node.start + offset];
                 HitRecord hit;
                 if (shape->getMaterial().transmission <= 0.0 &&
@@ -134,10 +154,9 @@ bool Bvh::occluded(const Ray& ray, double minDistance,
                 }
             }
         } else {
-            stack.push_back(node.left);
-            stack.push_back(node.right);
+            stack[stackSize++] = node.left;
+            stack[stackSize++] = node.right;
         }
     }
     return false;
 }
-

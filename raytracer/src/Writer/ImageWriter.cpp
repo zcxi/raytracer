@@ -46,6 +46,22 @@ unsigned char ImageWriter::toByte(double linearValue, double exposure,
 }
 
 bool ImageWriter::write(const std::vector<std::vector<Vec3>>& image) const {
+    return writeScaled(image, 1.0);
+}
+
+bool ImageWriter::writeAccumulation(
+        const std::vector<std::vector<Vec3>>& accumulation,
+        unsigned int completedSamples) const {
+    if (completedSamples == 0) {
+        return false;
+    }
+    return writeScaled(
+        accumulation, static_cast<double>(completedSamples));
+}
+
+bool ImageWriter::writeScaled(
+        const std::vector<std::vector<Vec3>>& image,
+        double divisor) const {
     if (image.empty() || image.front().empty()) {
         return false;
     }
@@ -68,9 +84,12 @@ bool ImageWriter::write(const std::vector<std::vector<Vec3>>& image) const {
         for (std::size_t column = 0; column < width; ++column) {
             const Vec3& pixel = image[row][column];
             const unsigned char bytes[3] = {
-                toByte(pixel.X(), settings.exposure, settings.toneMapper),
-                toByte(pixel.Y(), settings.exposure, settings.toneMapper),
-                toByte(pixel.Z(), settings.exposure, settings.toneMapper)
+                toByte(pixel.X() / divisor,
+                       settings.exposure, settings.toneMapper),
+                toByte(pixel.Y() / divisor,
+                       settings.exposure, settings.toneMapper),
+                toByte(pixel.Z() / divisor,
+                       settings.exposure, settings.toneMapper)
             };
             ofs.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
         }

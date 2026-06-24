@@ -34,6 +34,9 @@ public:
         : outputPath(outputPath), settings(settings) {}
 
     bool write(const std::vector<std::vector<Vec3>>& image) const;
+    bool writeAccumulation(
+        const std::vector<std::vector<Vec3>>& accumulation,
+        unsigned int completedSamples) const;
     static double applyExposure(double linearValue, double exposure);
     static double toneMap(double linearValue, ToneMapper toneMapper);
     static double linearToSrgb(double linearValue);
@@ -42,6 +45,9 @@ public:
         ToneMapper toneMapper = ToneMapper::None);
 
 private:
+    bool writeScaled(
+        const std::vector<std::vector<Vec3>>& image,
+        double divisor) const;
     std::string outputPath;
     ImageOutputSettings settings;
 };

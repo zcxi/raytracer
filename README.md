@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 path tracer. Version 1.0 adds thin-lens depth of field, motion blur,
-triangles and OBJ meshes, transformed instances, UV coordinates, and procedural
-or image textures.
+A small C++11 path tracer. Version 1.1 adds allocation-free vector math,
+one-time scene BVH construction, mesh-local acceleration, persistent render
+workers, zero-copy progressive output, and reproducible tracing statistics.
 
 ## Building
 
@@ -41,7 +41,18 @@ maps.
 
 Finite geometry is automatically placed in a BVH; infinite planes are tested
 separately. Use `--no-bvh` to compare against brute-force traversal. Each render
-reports total time, primary-sample throughput, and BVH node count.
+reports total time, throughput, BVH size, rays, shadow rays, AABB and primitive
+tests, BVH node visits, and average path depth.
+
+Build and run the reproducible mesh benchmark with:
+
+```sh
+cmake --build build-release
+./build-release/raytracer_benchmark
+```
+
+See [BENCHMARKS.md](BENCHMARKS.md) for the v1.0 baseline, v1.1 results, and
+commands used.
 
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the

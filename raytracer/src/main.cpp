@@ -275,6 +275,7 @@ void demo1(const CommandLineOptions& options) {
                   Material::principled(
                       Vec3(0.5, 0.16, 0.12),
                       0.82, 0.0, 0.0).withTexture(checker))));
+    scene.finalize();
 
     Camera camera(Vec3(0, 0.1, 0), Vec3(),
                   640, 640, pi / 6,

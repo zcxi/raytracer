@@ -1,4 +1,5 @@
 #include "Aabb.h"
+#include "../Diagnostics/TraceStats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,10 @@ Aabb::Aabb(const Vec3& minimum, const Vec3& maximum)
 
 bool Aabb::intersect(const Ray& ray, double minDistance,
                      double maxDistance) const {
+    TraceStats* stats = currentTraceStats();
+    if (stats) {
+        ++stats->aabbTests;
+    }
     for (int axis = 0; axis < 3; ++axis) {
         const double direction = component(ray.direction(), axis);
         const double origin = component(ray.origin(), axis);
@@ -55,4 +60,3 @@ Aabb Aabb::surrounding(const Aabb& first, const Aabb& second) {
              std::max(first.max().Y(), second.max().Y()),
              std::max(first.max().Z(), second.max().Z())));
 }
-

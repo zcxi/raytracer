@@ -27,7 +27,7 @@ FaceIndex parseIndex(const std::string& text) {
 } // namespace
 
 ObjMesh::ObjMesh(const std::string& path, const Material& material)
-    : Shape(material), triangles(), bounds() {
+    : Shape(material), triangles(), triangleShapes(), bvh(), bounds() {
     std::ifstream input(path.c_str());
     if (!input) throw std::runtime_error("Failed to open OBJ: " + path);
     std::vector<Vec3> positions(1);
@@ -76,10 +76,25 @@ ObjMesh::ObjMesh(const std::string& path, const Material& material)
         triangles[i].boundingBox(triangleBounds);
         bounds = Aabb::surrounding(bounds, triangleBounds);
     }
+    triangleShapes.reserve(triangles.size());
+    for (const Triangle& triangle : triangles) {
+        triangleShapes.push_back(&triangle);
+    }
+    bvh.build(triangleShapes);
 }
 
 bool ObjMesh::intersect(const Ray& ray, double minDistance,
                         double maxDistance, HitRecord& hit) const {
+    if (bvh.intersect(ray, minDistance, maxDistance, hit)) {
+        hit.shape = this;
+        return true;
+    }
+    return false;
+}
+
+bool ObjMesh::intersectBruteForce(
+        const Ray& ray, double minDistance,
+        double maxDistance, HitRecord& hit) const {
     bool found = false;
     double closest = maxDistance;
     for (const Triangle& triangle : triangles) {
@@ -98,4 +113,3 @@ bool ObjMesh::boundingBox(Aabb& output) const {
     output = bounds;
     return true;
 }
-
