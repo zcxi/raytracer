@@ -9,7 +9,19 @@
 #include "Light/LightSource.h"
 #include "../shapes/Shape.h"
 #include "../Math/Ray.h"
+#include "../Math/Sampler.h"
 #include <memory>
+
+struct PathTraceSettings {
+    unsigned int maxBounces;
+    unsigned int russianRouletteStart;
+
+    PathTraceSettings(unsigned int maxBounces = 8,
+                      unsigned int russianRouletteStart = 4)
+        : maxBounces(maxBounces),
+          russianRouletteStart(russianRouletteStart) {
+    }
+};
 
 class Scene {
 
@@ -19,13 +31,26 @@ class Scene {
         explicit Scene(const Vec3& backgroundColor = Vec3(0.0, 0.0, 0.0));
 
         Vec3 trace(const Ray& ray) const;
+        Vec3 trace(const Ray& ray, Sampler& sampler,
+                   const PathTraceSettings& settings) const;
         bool findClosestHit(const Ray& ray, double minDistance,
                             double maxDistance, HitRecord& hit) const;
         bool isOccluded(const Ray& ray, double maxDistance) const;
         void addShape(std::unique_ptr<Shape> shape);
         void addLight(std::unique_ptr<LightSource> source);
 
+        static Vec3 reflect(const Vec3& direction, const Vec3& normal);
+        static Vec3 refract(const Vec3& direction, const Vec3& normal,
+                            double refractionRatio);
+        static bool hasTotalInternalReflection(
+            const Vec3& direction, const Vec3& normal,
+            double refractionRatio);
+        static double schlickReflectance(double cosine,
+                                         double refractionRatio);
+
     private:
+        Vec3 directLighting(const HitRecord& hit) const;
+        static Vec3 cosineHemisphere(const Vec3& normal, Sampler& sampler);
         Vec3 backgroundColor;
         std::vector<std::unique_ptr<Shape>> shapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;

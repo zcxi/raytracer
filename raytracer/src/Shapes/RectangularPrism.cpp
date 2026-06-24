@@ -30,9 +30,8 @@ Vec3 axisNormal(int axis, double sign) {
 
 RectangularPrism::RectangularPrism(
         const Vec3& center, const Vec3& dimensions,
-        const Vec3& surfaceColor, const Vec3& emissionColor,
-        double transparency, double refractiveIndex)
-    : Shape(surfaceColor, emissionColor, transparency, refractiveIndex),
+        const Material& material)
+    : Shape(material),
       center(center),
       dimensions(dimensions),
       minimum(center - dimensions * 0.5),
@@ -42,6 +41,22 @@ RectangularPrism::RectangularPrism(
         dimensions.Z() <= Vec3::EPSILON) {
         throw std::invalid_argument(
             "Rectangular prism dimensions must all be positive.");
+    }
+}
+
+RectangularPrism::RectangularPrism(
+        const Vec3& center, const Vec3& dimensions,
+        const Vec3& surfaceColor, const Vec3& emissionColor,
+        double transparency, double refractiveIndex)
+    : RectangularPrism(
+          center, dimensions,
+          transparency > 0.0
+              ? Material::dielectric(
+                    refractiveIndex, surfaceColor, emissionColor)
+              : Material::diffuse(surfaceColor, emissionColor)) {
+    if (transparency < 0.0 || transparency > 1.0) {
+        throw std::invalid_argument(
+            "Transparency must be between zero and one.");
     }
 }
 
@@ -105,4 +120,3 @@ bool RectangularPrism::intersect(const Ray& ray, double minDistance,
     hit.shape = this;
     return true;
 }
-

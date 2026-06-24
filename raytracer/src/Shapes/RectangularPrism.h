@@ -6,6 +6,8 @@
 class RectangularPrism : public Shape {
 public:
     RectangularPrism(const Vec3& center, const Vec3& dimensions,
+                     const Material& material);
+    RectangularPrism(const Vec3& center, const Vec3& dimensions,
                      const Vec3& surfaceColor, const Vec3& emissionColor,
                      double transparency, double refractiveIndex);
 
@@ -23,4 +25,3 @@ private:
 };
 
 #endif
-

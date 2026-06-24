@@ -1,5 +1,7 @@
 #include "Math/Quaternion.h"
 #include "Math/Ray.h"
+#include "Math/Sampler.h"
+#include "Materials/Material.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Light/PointSource.h"
@@ -327,6 +329,110 @@ void testDeterministicSampling() {
         Renderer invalid(writer, scene, camera, RenderSettings(0));
         (void)invalid;
     }, "Renderers reject zero samples per pixel.");
+    expectThrows([]() {
+        Scene scene;
+        Camera camera(Vec3(), Vec3(), 1, 1, PI * 0.5);
+        ImageWriter writer("unused.ppm");
+        Renderer invalid(
+            writer, scene, camera,
+            RenderSettings(1, 0, 1, 1, 0, 0));
+        (void)invalid;
+    }, "Renderers reject zero maximum bounce depth.");
+}
+
+void testMaterialsAndOptics() {
+    const Material diffuse =
+        Material::diffuse(Vec3(0.2, 0.4, 0.6));
+    const Material mirror =
+        Material::mirror(Vec3(0.9, 0.9, 0.9));
+    const Material glass =
+        Material::dielectric(1.5);
+    expect(diffuse.type == MaterialType::Diffuse,
+           "Diffuse material factory sets the correct type.");
+    expect(mirror.type == MaterialType::Mirror,
+           "Mirror material factory sets the correct type.");
+    expect(glass.type == MaterialType::Dielectric,
+           "Dielectric material factory sets the correct type.");
+    expectNear(glass.refractiveIndex, 1.5, 1e-9,
+               "Dielectric stores its index of refraction.");
+    expectThrows([]() {
+        const Material invalid =
+            Material::dielectric(0.0);
+        (void)invalid;
+    }, "Dielectrics reject non-positive refractive indices.");
+    expectThrows([]() {
+        const Material invalid =
+            Material::diffuse(Vec3(-0.1, 0.0, 0.0));
+        (void)invalid;
+    }, "Materials reject negative albedo.");
+    expectThrows([]() {
+        const Material invalid =
+            Material::diffuse(Vec3(1.1, 0.0, 0.0));
+        (void)invalid;
+    }, "Materials reject albedo above one.");
+
+    expectVecNear(
+        Scene::reflect(
+            Vec3(1.0, -1.0, 0.0).normalize(),
+            Vec3(0.0, 1.0, 0.0)),
+        Vec3(1.0, 1.0, 0.0).normalize(), 1e-9,
+        "Mirror reflection follows the surface normal.");
+    expectVecNear(
+        Scene::refract(
+            Vec3(0.0, -1.0, 0.0),
+            Vec3(0.0, 1.0, 0.0), 1.0 / 1.5),
+        Vec3(0.0, -1.0, 0.0), 1e-9,
+        "Normal-incidence refraction does not bend.");
+    expectNear(
+        Scene::schlickReflectance(1.0, 1.0 / 1.5),
+        0.04, 1e-9,
+        "Schlick Fresnel gives four-percent glass reflectance head-on.");
+    expect(!Scene::hasTotalInternalReflection(
+               Vec3(0.0, -1.0, 0.0),
+               Vec3(0.0, 1.0, 0.0), 1.5),
+           "A normal-incidence ray can exit a dielectric.");
+    expect(Scene::hasTotalInternalReflection(
+               Vec3(0.98, -0.2, 0.0).normalize(),
+               Vec3(0.0, 1.0, 0.0), 1.5),
+           "A steep inside ray triggers total internal reflection.");
+}
+
+void testSecondaryRayTransport() {
+    Scene mirrorScene(Vec3(0.2, 0.3, 0.4));
+    mirrorScene.addShape(std::unique_ptr<Shape>(
+        new Plane(
+            Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -1.0),
+            Material::mirror())));
+    Sampler mirrorSampler(0, 0, 7);
+    const Vec3 reflected = mirrorScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        mirrorSampler, PathTraceSettings(2, 99));
+    expectVecNear(reflected, Vec3(0.2, 0.3, 0.4), 1e-9,
+                  "A perfect mirror reflects environment radiance.");
+
+    Scene emissiveScene;
+    emissiveScene.addShape(std::unique_ptr<Shape>(
+        new Sphere(
+            Vec3(0.0, 0.0, -3.0), 1.0,
+            Material::diffuse(
+                Vec3(), Vec3(3.0, 2.0, 1.0)))));
+    Sampler emissiveSampler(0, 0, 9);
+    const Vec3 emitted = emissiveScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        emissiveSampler, PathTraceSettings(1, 99));
+    expectVecNear(emitted, Vec3(3.0, 2.0, 1.0), 1e-9,
+                  "Emissive materials contribute radiance at a hit.");
+
+    Sampler firstSampler(12, 4, 99);
+    Sampler secondSampler(12, 4, 99);
+    const Vec3 firstPath = mirrorScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        firstSampler, PathTraceSettings(8, 2));
+    const Vec3 secondPath = mirrorScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        secondSampler, PathTraceSettings(8, 2));
+    expectVecNear(firstPath, secondPath, 0.0,
+                  "Secondary-ray sampling is deterministic.");
 }
 
 } // namespace
@@ -344,6 +450,8 @@ int main() {
         testDirectLightingAndShadows();
         testImageEncoding();
         testDeterministicSampling();
+        testMaterialsAndOptics();
+        testSecondaryRayTransport();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

@@ -7,12 +7,14 @@
 
 
 #include "../Math/Vec3.h"
+#include "../Materials/Material.h"
 #include "HitRecord.h"
 
 class Shape {
 
     public:
 
+        explicit Shape(const Material& material);
         Shape(const Vec3& surfaceColor, const Vec3& emissionColor,
               double transparency, double refractiveIndex);
         int getId();
@@ -22,20 +24,19 @@ class Shape {
         virtual bool intersect(const Ray& ray, double minDistance,
                                double maxDistance, HitRecord& hit) const = 0;
 
-        const Vec3& getSurfaceColor() const {
-            return surfaceColor;
+        const Material& getMaterial() const { return material; }
+        const Vec3& getSurfaceColor() const { return material.albedo; }
+        const Vec3& getEmissionColor() const { return material.emission; }
+        double getTransparency() const {
+            return material.type == MaterialType::Dielectric ? 1.0 : 0.0;
         }
-
-        const Vec3& getEmissionColor() const { return emissionColor; }
-        double getTransparency() const { return transparency; }
-        double getRefractiveIndex() const { return refractiveIndex; }
+        double getRefractiveIndex() const {
+            return material.refractiveIndex;
+        }
 
     private:
         int id;
-        Vec3 surfaceColor;
-        Vec3 emissionColor;
-        double transparency;
-        double refractiveIndex;
+        Material material;
 
 };
 

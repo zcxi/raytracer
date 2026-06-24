@@ -37,21 +37,37 @@ Pyramid::Triangle::Triangle(const Vec3& first, const Vec3& second,
       normal((second - first).cross(third - first).normalize()) {
 }
 
-Pyramid::Pyramid(const Vec3& baseCenter, double baseWidth, double baseDepth,
-                 double height, const Vec3& surfaceColor,
-                 const Vec3& emissionColor, double transparency,
-                 double refractiveIndex)
-    : Shape(surfaceColor, emissionColor, transparency, refractiveIndex),
+Pyramid::Pyramid(const Vec3& baseCenter, double baseWidth,
+                 double baseDepth, double height,
+                 const Material& material)
+    : Shape(material),
       baseCenter(baseCenter),
       baseWidth(baseWidth),
       baseDepth(baseDepth),
       height(height),
-      triangles(makeTriangles(baseCenter, baseWidth, baseDepth, height)) {
+      triangles(makeTriangles(
+          baseCenter, baseWidth, baseDepth, height)) {
     if (baseWidth <= Vec3::EPSILON ||
         baseDepth <= Vec3::EPSILON ||
         height <= Vec3::EPSILON) {
         throw std::invalid_argument(
             "Pyramid width, depth, and height must all be positive.");
+    }
+}
+
+Pyramid::Pyramid(const Vec3& baseCenter, double baseWidth, double baseDepth,
+                 double height, const Vec3& surfaceColor,
+                 const Vec3& emissionColor, double transparency,
+                 double refractiveIndex)
+    : Pyramid(
+          baseCenter, baseWidth, baseDepth, height,
+          transparency > 0.0
+              ? Material::dielectric(
+                    refractiveIndex, surfaceColor, emissionColor)
+              : Material::diffuse(surfaceColor, emissionColor)) {
+    if (transparency < 0.0 || transparency > 1.0) {
+        throw std::invalid_argument(
+            "Transparency must be between zero and one.");
     }
 }
 

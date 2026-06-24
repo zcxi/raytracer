@@ -11,6 +11,8 @@
 class Sphere: public Shape {
 
     public:
+        Sphere(const Vec3& center, double radius,
+               const Material& material);
         Sphere(const Vec3& center, double radius, const Vec3& surfaceColor,
                const Vec3& emissionColor, double transparency,
                double refractiveIndex);

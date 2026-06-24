@@ -6,15 +6,27 @@
 #include <stdexcept>
 #include "Sphere.h"
 
-Sphere::Sphere(const Vec3& center, double radius, const Vec3& surfaceColor,
-        const Vec3& emissionColor, double transparency, double refractiveIndex)
-        :Shape(surfaceColor, emissionColor, transparency, refractiveIndex){
-
-    this->center = Vec3(center);
-    this->radius = radius;
-    this->radiusSquared = radius * radius;
+Sphere::Sphere(const Vec3& center, double radius,
+               const Material& material)
+    : Shape(material),
+      center(center),
+      radius(radius),
+      radiusSquared(radius * radius) {
     if (radius <= Vec3::EPSILON) {
         throw std::invalid_argument("Sphere radius must be positive.");
+    }
+}
+
+Sphere::Sphere(const Vec3& center, double radius, const Vec3& surfaceColor,
+        const Vec3& emissionColor, double transparency, double refractiveIndex)
+    : Sphere(center, radius,
+             transparency > 0.0
+                 ? Material::dielectric(
+                       refractiveIndex, surfaceColor, emissionColor)
+                 : Material::diffuse(surfaceColor, emissionColor)) {
+    if (transparency < 0.0 || transparency > 1.0) {
+        throw std::invalid_argument(
+            "Transparency must be between zero and one.");
     }
 }
 

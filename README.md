@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 ray tracer being evolved into a physically based path tracer.
-Version 0.3 adds deterministic multisampling, progressive output, exposure
-control, and HDR tone mapping on top of the correctness-focused v0.2 foundation.
+A small C++11 path tracer. Version 0.4 adds diffuse global illumination,
+perfect mirrors, dielectric transmission, Fresnel reflection, configurable path
+depth, and Russian roulette termination.
 
 ## Building
 
@@ -17,14 +17,18 @@ ctest --test-dir build --output-on-failure
 Run the demo renderer with an optional output path and image-quality settings:
 
 ```sh
-./build/raytracer output.ppm --samples 64 --exposure 0.5 \
-  --tone-map aces --preview 8 --seed 1
+./build/raytracer output.ppm --samples 128 --bounces 8 \
+  --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1
 ```
 
 Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
 in photographic stops. A preview interval of zero disables intermediate output.
 Sampling is deterministic: the same scene, sample count, and seed produce the
 same image regardless of worker scheduling.
+
+Materials are created with `Material::diffuse`, `Material::mirror`, and
+`Material::dielectric`. Diffuse paths use cosine-weighted hemisphere sampling;
+point lights are sampled directly at every diffuse bounce to reduce noise.
 
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the
@@ -42,6 +46,8 @@ ctest --test-dir build-sanitize --output-on-failure
 ## Source layout
 
 - `raytracer/src/Math` — vectors, quaternions, and rays
+- `raytracer/src/Materials` — diffuse, mirror, dielectric, and emissive
+  material parameters
 - `raytracer/src/Scene` — camera, scene traversal, and lights
 - `raytracer/src/Shapes` — spheres, planes, cubes, rectangular prisms,
   square pyramids, and intersection records

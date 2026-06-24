@@ -12,6 +12,8 @@ class Plane: public Shape {
 
     public:
 
+        Plane(const Vec3& normal, const Vec3& point,
+              const Material& material);
         Plane(const Vec3& normal, const Vec3& point, const Vec3& surfaceColor,
               const Vec3& emissionColor, double transparency,
               double refractiveIndex);

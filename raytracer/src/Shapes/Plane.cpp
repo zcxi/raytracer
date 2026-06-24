@@ -6,15 +6,26 @@
 #include <cmath>
 #include <stdexcept>
 
-Plane::Plane(const Vec3& normal, const Vec3& point, const Vec3& surfaceColor,
-             const Vec3& emissionColor, double transparency,
-             double refractiveIndex)
-    :Shape(surfaceColor, emissionColor, transparency, refractiveIndex) {
+Plane::Plane(const Vec3& normal, const Vec3& point,
+             const Material& material)
+    : Shape(material), normal(normal.normalize()), point(point) {
     if (normal.getLength() <= Vec3::EPSILON) {
         throw std::invalid_argument("Plane normal must be non-zero.");
     }
-    this->normal = normal.normalize();
-    this->point = point;
+}
+
+Plane::Plane(const Vec3& normal, const Vec3& point, const Vec3& surfaceColor,
+             const Vec3& emissionColor, double transparency,
+             double refractiveIndex)
+    : Plane(normal, point,
+            transparency > 0.0
+                ? Material::dielectric(
+                      refractiveIndex, surfaceColor, emissionColor)
+                : Material::diffuse(surfaceColor, emissionColor)) {
+    if (transparency < 0.0 || transparency > 1.0) {
+        throw std::invalid_argument(
+            "Transparency must be between zero and one.");
+    }
 }
 
 bool Plane::intersect(const Ray& ray, double minDistance,

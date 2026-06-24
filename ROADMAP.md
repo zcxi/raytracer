@@ -111,6 +111,8 @@ detail.
 
 ## Phase 3: Materials and Secondary Rays
 
+**Status: completed for v0.4 on June 24, 2026.**
+
 - Introduce a `Material` interface or tagged material model.
 - Support diffuse/Lambertian reflection using cosine-weighted hemisphere sampling.
 - Support perfect mirrors.
@@ -122,6 +124,22 @@ detail.
 
 **Visible result:** reflections, glass, indirect illumination, color bleeding, and
 non-black shadow regions.
+
+### Delivered in v0.4
+
+- Added tagged diffuse, perfect-mirror, and dielectric materials with optional
+  emission and tint.
+- Added iterative multi-bounce path transport with linear throughput tracking.
+- Added cosine-weighted hemisphere sampling for diffuse global illumination.
+- Added exact mirror reflection and Snell-law dielectric refraction.
+- Added Schlick Fresnel selection and total internal reflection.
+- Added direct point-light sampling at every diffuse bounce, allowing secondary
+  surfaces to receive lighting with less noise.
+- Added configurable maximum path depth and Russian roulette start depth.
+- Extended deterministic sampling to all secondary-ray decisions.
+- Added CLI controls for bounce depth and Russian roulette.
+- Added optics, material-validation, emissive, mirror-transport, and secondary
+  sampling tests.
 
 ## Phase 4: Path-Traced Lighting
 
@@ -183,7 +201,7 @@ Completed June 24, 2026.
 
 ### v0.4 — First Path Tracer
 
-Complete Phase 3 with diffuse global illumination, mirrors, and glass.
+Completed June 24, 2026.
 
 ### v0.5 — Realistic Lighting
 

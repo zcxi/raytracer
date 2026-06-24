@@ -19,28 +19,17 @@ Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
     if (settings.samplesPerPixel == 0) {
         throw std::invalid_argument("Samples per pixel must be positive.");
     }
+    if (settings.maxBounces == 0) {
+        throw std::invalid_argument("Maximum bounces must be positive.");
+    }
 }
 
 double Renderer::sampleOffset(std::size_t pixelIndex,
                               unsigned int sampleIndex,
                               std::uint64_t seed,
                               unsigned int dimension) {
-    std::uint64_t value = seed;
-    value ^= static_cast<std::uint64_t>(pixelIndex) +
-             0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
-    value ^= static_cast<std::uint64_t>(sampleIndex) *
-             0xbf58476d1ce4e5b9ULL;
-    value ^= static_cast<std::uint64_t>(dimension) *
-             0x94d049bb133111ebULL;
-    value ^= value >> 30;
-    value *= 0xbf58476d1ce4e5b9ULL;
-    value ^= value >> 27;
-    value *= 0x94d049bb133111ebULL;
-    value ^= value >> 31;
-
-    const std::uint64_t mantissa = value >> 11;
-    return static_cast<double>(mantissa) *
-           (1.0 / 9007199254740992.0);
+    return Sampler::sample(
+        pixelIndex, sampleIndex, seed, dimension);
 }
 
 void Renderer::renderPass(unsigned int sampleIndex) {
@@ -73,16 +62,19 @@ void Renderer::renderPass(unsigned int sampleIndex) {
 
                 const int row = static_cast<int>(index / width);
                 const int column = static_cast<int>(index % width);
-                const double offsetX =
-                    sampleOffset(index, sampleIndex,
-                                 settings.randomSeed, 0);
-                const double offsetY =
-                    sampleOffset(index, sampleIndex,
-                                 settings.randomSeed, 1);
+                Sampler sampler(
+                    index, sampleIndex, settings.randomSeed);
+                const double offsetX = sampler.next();
+                const double offsetY = sampler.next();
                 const Ray ray =
                     camera.makeRay(column + offsetX, row + offsetY);
                 accumulationBuffer[row][column] =
-                    accumulationBuffer[row][column] + scene.trace(ray);
+                    accumulationBuffer[row][column] +
+                    scene.trace(
+                        ray, sampler,
+                        PathTraceSettings(
+                            settings.maxBounces,
+                            settings.russianRouletteStart));
             }
         });
     }

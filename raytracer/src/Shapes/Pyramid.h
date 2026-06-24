@@ -8,6 +8,8 @@
 class Pyramid : public Shape {
 public:
     Pyramid(const Vec3& baseCenter, double baseWidth, double baseDepth,
+            double height, const Material& material);
+    Pyramid(const Vec3& baseCenter, double baseWidth, double baseDepth,
             double height, const Vec3& surfaceColor,
             const Vec3& emissionColor, double transparency,
             double refractiveIndex);

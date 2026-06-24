@@ -25,7 +25,7 @@ struct CommandLineOptions {
 
     CommandLineOptions()
         : outputPath("output.ppm"),
-          renderSettings(16, 4, 1, 0),
+          renderSettings(32, 8, 1, 0, 8, 4),
           outputSettings(0.0, ToneMapper::Aces) {
     }
 };
@@ -82,7 +82,9 @@ void printUsage() {
         << "  --tone-map NAME   none, reinhard, or aces (default: aces)\n"
         << "  --preview N       Rewrite output every N samples (default: 4)\n"
         << "  --seed N          Deterministic sampling seed (default: 1)\n"
-        << "  --threads N       Worker count; 0 uses hardware concurrency\n";
+        << "  --threads N       Worker count; 0 uses hardware concurrency\n"
+        << "  --bounces N       Maximum path depth (default: 8)\n"
+        << "  --rr-start N      Russian roulette start bounce (default: 4)\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -122,12 +124,21 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
         } else if (argument == "--threads") {
             options.renderSettings.workerCount =
                 parseUnsigned(value, argument);
+        } else if (argument == "--bounces") {
+            options.renderSettings.maxBounces =
+                parseUnsigned(value, argument);
+        } else if (argument == "--rr-start") {
+            options.renderSettings.russianRouletteStart =
+                parseUnsigned(value, argument);
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
     }
     if (options.renderSettings.samplesPerPixel == 0) {
         throw std::invalid_argument("Samples per pixel must be positive.");
+    }
+    if (options.renderSettings.maxBounces == 0) {
+        throw std::invalid_argument("Maximum bounces must be positive.");
     }
     return options;
 }
@@ -137,24 +148,29 @@ void demo1(const CommandLineOptions& options) {
     Scene scene(Vec3(0.02, 0.03, 0.05));
 
     scene.addShape(std::unique_ptr<Shape>(
-        new Cube(Vec3(-7, 7, -58), 7.0,
-                 Vec3(0.15, 0.65, 1.0), Vec3(), 0.0, 1.5)));
+        new Sphere(Vec3(-7, 7, -58), 4.0,
+                   Material::mirror(Vec3(0.92, 0.97, 1.0)))));
     scene.addShape(std::unique_ptr<Shape>(
         new RectangularPrism(
             Vec3(7, 7, -58), Vec3(10, 6, 5),
-            Vec3(0.2, 1.0, 0.35), Vec3(), 0.0, 1.5)));
+            Material::diffuse(Vec3(0.15, 0.8, 0.25)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, -7, -58), 4,
-                   Vec3(1.0, 0.2, 0.1), Vec3(), 0.0, 1.5)));
+                   Material::dielectric(
+                       1.5, Vec3(0.98, 0.99, 1.0)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Pyramid(Vec3(7, -11, -59), 10, 7, 10,
-                    Vec3(1.0, 0.75, 0.1), Vec3(), 0.0, 1.5)));
+                    Material::diffuse(Vec3(1.0, 0.65, 0.08)))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(Vec3(0, 14, -59), 2.0,
+                   Material::diffuse(Vec3(0.9, 0.85, 0.7)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Plane(Vec3(0, 0, -1), Vec3(0, 0, -64),
-                  Vec3(1.0, 0.0, 1.0), Vec3(), 0.0, 1.0)));
+                  Material::diffuse(Vec3(0.55, 0.18, 0.15)))));
 
     scene.addLight(std::unique_ptr<LightSource>(
-        new PointSource(Vec3(40, 40, 10), Vec3(1.0, 1.0, 1.0), 150000)));
+        new PointSource(
+            Vec3(40, 40, 10), Vec3(1.0, 0.95, 0.85), 150000)));
 
     Camera camera(Vec3(0, 0.1, 0), Vec3(),
                   640, 640, pi / 6);
