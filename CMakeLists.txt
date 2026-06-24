@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(raytracer VERSION 0.7.0 LANGUAGES CXX)
+project(raytracer VERSION 1.0.0 LANGUAGES CXX)
 
 option(RAYTRACER_ENABLE_SANITIZERS
        "Enable address and undefined-behavior sanitizers" OFF)
@@ -26,12 +26,17 @@ set(RAYTRACER_SOURCES
     raytracer/src/Scene/Light/PointSource.cpp
     raytracer/src/Scene/Scene.cpp
     raytracer/src/Shapes/Cube.cpp
+    raytracer/src/Shapes/MovingSphere.cpp
+    raytracer/src/Shapes/ObjMesh.cpp
     raytracer/src/Shapes/Plane.cpp
     raytracer/src/Shapes/Pyramid.cpp
     raytracer/src/Shapes/Rectangle.cpp
     raytracer/src/Shapes/RectangularPrism.cpp
     raytracer/src/Shapes/Shape.cpp
     raytracer/src/Shapes/Sphere.cpp
+    raytracer/src/Shapes/Triangle.cpp
+    raytracer/src/Shapes/Transform.cpp
+    raytracer/src/Textures/Texture.cpp
     raytracer/src/Writer/ImageWriter.cpp
 )
 

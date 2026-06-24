@@ -16,14 +16,16 @@ void validateNonNegativeColor(const Vec3& color, const char* name) {
 Material::Material(MaterialType type, const Vec3& albedo,
                    const Vec3& emission, double refractiveIndex,
                    double roughness, double metallic,
-                   double transmission)
+                   double transmission,
+                   std::shared_ptr<Texture> texture)
     : type(type),
       albedo(albedo),
       emission(emission),
       refractiveIndex(refractiveIndex),
       roughness(roughness),
       metallic(metallic),
-      transmission(transmission) {
+      transmission(transmission),
+      texture(texture) {
     validateNonNegativeColor(albedo, "Material albedo");
     validateNonNegativeColor(emission, "Material emission");
     if (albedo.X() > 1.0 || albedo.Y() > 1.0 || albedo.Z() > 1.0) {
@@ -40,6 +42,18 @@ Material::Material(MaterialType type, const Vec3& albedo,
         throw std::invalid_argument(
             "Roughness, metallic, and transmission must be between zero and one.");
     }
+}
+
+Material Material::withTexture(
+        std::shared_ptr<Texture> newTexture) const {
+    Material copy = *this;
+    copy.texture = newTexture;
+    return copy;
+}
+
+Vec3 Material::colorAt(
+        double u, double v, const Vec3& point) const {
+    return texture ? texture->value(u, v, point) : albedo;
 }
 
 Material Material::diffuse(const Vec3& albedo, const Vec3& emission) {

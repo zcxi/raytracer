@@ -91,7 +91,7 @@ double Renderer::renderPass(unsigned int sampleIndex) {
                         const double offsetX = sampler.next();
                         const double offsetY = sampler.next();
                         const Ray ray = camera.makeRay(
-                            column + offsetX, row + offsetY);
+                            column + offsetX, row + offsetY, sampler);
                         accumulationBuffer[row][column] =
                             accumulationBuffer[row][column] +
                             scene.trace(

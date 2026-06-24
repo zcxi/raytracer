@@ -47,6 +47,8 @@ bool Rectangle::intersect(const Ray& ray, double minDistance,
     hit.distance = distance;
     hit.point = point;
     hit.setFaceNormal(ray, normal);
+    hit.u = offset.dot(right) / width + 0.5;
+    hit.v = offset.dot(up) / height + 0.5;
     hit.shape = this;
     return true;
 }

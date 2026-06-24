@@ -14,9 +14,14 @@
 #include "Shapes/Plane.h"
 #include "Shapes/Pyramid.h"
 #include "Shapes/Rectangle.h"
+#include "Shapes/Triangle.h"
+#include "Shapes/ObjMesh.h"
+#include "Shapes/MovingSphere.h"
+#include "Shapes/Transform.h"
 #include "Shapes/RectangularPrism.h"
 #include "Shapes/Sphere.h"
 #include "Writer/ImageWriter.h"
+#include "Textures/Texture.h"
 
 #include <cmath>
 #include <cstdio>
@@ -685,6 +690,103 @@ void testAccelerationStructures() {
     }, "Renderers reject zero tile size.");
 }
 
+void testSceneCapabilityFeatures() {
+    const Ray timedRay(
+        Vec3(), Vec3(0.0, 0.0, -1.0), 0.75);
+    expectNear(timedRay.time(), 0.75, 1e-9,
+               "Rays preserve shutter time.");
+
+    const Camera lensCamera(
+        Vec3(), Vec3(), 100, 100, PI * 0.5,
+        0.5, 10.0, 0.2, 0.8);
+    Sampler lensSampler(4, 5, 6);
+    const Ray lensRay =
+        lensCamera.makeRay(50.0, 50.0, lensSampler);
+    expect(lensRay.origin().distanceTo(Vec3()) > 0.0,
+           "Thin-lens camera samples the aperture.");
+    expect(lensRay.time() >= 0.2 && lensRay.time() <= 0.8,
+           "Camera samples ray time inside the shutter interval.");
+
+    const MovingSphere moving(
+        Vec3(-1.0, 0.0, -5.0), Vec3(1.0, 0.0, -5.0),
+        0.0, 1.0, 1.0, Material::diffuse(Vec3(1.0, 0.0, 0.0)));
+    expectVecNear(moving.centerAt(0.5), Vec3(0.0, 0.0, -5.0), 1e-9,
+                  "Moving sphere interpolates through shutter time.");
+    HitRecord movingHit;
+    expect(moving.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0), 0.5),
+               1e-4, 100.0, movingHit),
+           "Motion-blurred geometry intersects at ray time.");
+
+    const CheckerTexture checker(
+        Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), 1.0);
+    expect(checker.value(0.0, 0.0, Vec3(1.0, 1.0, 1.0)) !=
+               checker.value(0.0, 0.0, Vec3(1.0, 1.0, -1.0)),
+           "Checker texture varies procedurally in space.");
+    const std::string texturePath = "test-texture.ppm";
+    {
+        std::ofstream texture(texturePath.c_str(), std::ios::binary);
+        texture << "P6\n1 1\n255\n";
+        const unsigned char pixel[3] = {32, 64, 128};
+        texture.write(reinterpret_cast<const char*>(pixel), 3);
+    }
+    std::shared_ptr<ImageTexture> imageTexture(new ImageTexture());
+    expect(imageTexture->loadPpm(texturePath),
+           "Image texture loads P6 PPM data.");
+    expectVecNear(
+        imageTexture->value(0.5, 0.5, Vec3()),
+        Vec3(32.0 / 255.0, 64.0 / 255.0, 128.0 / 255.0),
+        1e-9, "Image texture returns UV-addressed color.");
+    std::remove(texturePath.c_str());
+
+    const Triangle triangle(
+        Vertex(Vec3(-1.0, -1.0, -5.0), Vec3(0.0, 0.0, 1.0), 0.0, 0.0),
+        Vertex(Vec3(1.0, -1.0, -5.0), Vec3(0.0, 0.0, 1.0), 1.0, 0.0),
+        Vertex(Vec3(0.0, 1.0, -5.0), Vec3(0.0, 0.0, 1.0), 0.5, 1.0),
+        Material::diffuse(Vec3(1.0, 1.0, 1.0)));
+    HitRecord triangleHit;
+    expect(triangle.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, triangleHit),
+           "Triangle supports barycentric ray intersection.");
+    expectNear(triangleHit.u, 0.5, 1e-9,
+               "Triangle interpolates texture U coordinates.");
+    expectNear(triangleHit.v, 0.5, 1e-9,
+               "Triangle interpolates texture V coordinates.");
+
+    const std::string objPath = "test-mesh.obj";
+    {
+        std::ofstream obj(objPath.c_str());
+        obj << "v -1 -1 -5\nv 1 -1 -5\nv 1 1 -5\nv -1 1 -5\n";
+        obj << "f 1 2 3 4\n";
+    }
+    ObjMesh mesh(objPath, Material::diffuse(Vec3(0.5, 0.5, 0.5)));
+    expect(mesh.triangleCount() == 2,
+           "OBJ loader triangulates polygon faces.");
+    HitRecord meshHit;
+    expect(mesh.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, meshHit),
+           "Loaded OBJ mesh participates in intersections.");
+    std::remove(objPath.c_str());
+
+    Transform transformed(
+        std::unique_ptr<Shape>(
+            new Sphere(
+                Vec3(), 1.0,
+                Material::diffuse(Vec3(1.0, 1.0, 1.0)))),
+        Vec3(2.0, 0.0, -5.0), Vec3(0.0, 0.3, 0.0),
+        Vec3(2.0, 1.0, 1.0));
+    HitRecord transformHit;
+    expect(transformed.intersect(
+               Ray(Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, transformHit),
+           "Transformed instances support translation, rotation, and scale.");
+    Aabb transformedBounds;
+    expect(transformed.boundingBox(transformedBounds),
+           "Transformed instances produce world-space bounds.");
+}
+
 } // namespace
 
 int main() {
@@ -705,6 +807,7 @@ int main() {
         testSecondaryRayTransport();
         testAreaLightsAndEnvironment();
         testAccelerationStructures();
+        testSceneCapabilityFeatures();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

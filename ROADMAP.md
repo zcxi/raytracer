@@ -223,6 +223,8 @@ remain practical to render.
 
 ## Phase 7: Camera, Geometry, and Scene Features
 
+**Status: completed for v1.0 on June 24, 2026.**
+
 - Add thin-lens depth of field with aperture and focus-distance controls.
 - Add motion blur by sampling ray time.
 - Add triangles and triangle meshes.
@@ -232,6 +234,21 @@ remain practical to render.
 
 **Visible result:** richer scenes with photographic focus, detailed assets, and
 textured surfaces.
+
+### Delivered in v1.0
+
+- Added thin-lens camera sampling with configurable aperture and focus distance.
+- Added shutter intervals, ray time, and motion-blurred moving spheres.
+- Added barycentric triangle intersections with interpolated normals and UVs.
+- Added OBJ loading with `v`, `vt`, `vn`, polygon fan triangulation, and BVH
+  participation.
+- Added transformed shape instances with translation, Euler rotation,
+  non-uniform scale, inverse-transpose normals, and transformed bounds.
+- Added sphere, rectangle, and triangle UV coordinates.
+- Added solid, procedural checker, and P6 PPM image textures.
+- Added texture-aware material evaluation inside the PBR integrator.
+- Added tests for lens sampling, shutter time, motion, UV interpolation, texture
+  loading, OBJ triangulation, transformed intersections, and bounds.
 
 ### Phase 8: Quality of life improvements
 - Add a table to set objects on
@@ -266,5 +283,4 @@ Phase 6 completed June 24, 2026.
 
 ### v1.0 — Scene-Capable Renderer
 
-Complete the selected Phase 7 features, document the scene format, and provide a
-small reference-scene suite.
+Completed June 24, 2026.

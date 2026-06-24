@@ -9,12 +9,15 @@
 #include <cmath>
 #include "../Math/Vec3.h"
 #include "../Math/Ray.h"
+#include "../Math/Sampler.h"
 
 class Camera {
 
      public:
         Camera(const Vec3& pos, const Vec3& rotationRadians,
-               int width, int height, double verticalFovRadians);
+               int width, int height, double verticalFovRadians,
+               double aperture = 0.0, double focusDistance = 1.0,
+               double shutterOpen = 0.0, double shutterClose = 0.0);
 
         const Vec3& getPosition() const { return pos; }
         const Vec3& getRotation() const { return rotation; }
@@ -25,6 +28,7 @@ class Camera {
         int getImageHeight() const { return imageHeight; }
         double getFov() const { return fov; }
         Ray makeRay(double pixelX, double pixelY) const;
+        Ray makeRay(double pixelX, double pixelY, Sampler& sampler) const;
 
 
     private:
@@ -36,6 +40,10 @@ class Camera {
         int imageWidth;
         int imageHeight;
         double fov;
+        double aperture;
+        double focusDistance;
+        double shutterOpen;
+        double shutterClose;
 };
 
 

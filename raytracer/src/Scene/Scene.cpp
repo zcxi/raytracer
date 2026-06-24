@@ -83,7 +83,8 @@ Vec3 Scene::trace(const Ray& ray) const {
 }
 
 Vec3 Scene::pointLighting(
-        const HitRecord& hit, const Vec3& outgoing) const {
+        const HitRecord& hit, const Material& material,
+        const Vec3& outgoing) const {
     Vec3 result;
     for (const auto& lightSource : lightSources) {
         const Vec3 pointToLight = lightSource->getPosition() - hit.point;
@@ -110,7 +111,7 @@ Vec3 Scene::pointLighting(
         const Vec3 incomingRadiance =
             lightSource->getColor() * distanceIntensity;
         const Vec3 bsdf = Bsdf::evaluate(
-            hit.shape->getMaterial(), hit.normal,
+            material, hit.normal,
             outgoing, lightDirection);
         result = result + bsdf.elementwiseMultiply(incomingRadiance) *
             surfaceCosine;
@@ -160,9 +161,10 @@ double Scene::environmentLightPdf(const Vec3& direction) const {
 }
 
 Vec3 Scene::directLighting(
-        const HitRecord& hit, const Vec3& outgoing,
+        const HitRecord& hit, const Material& material,
+        const Vec3& outgoing,
         Sampler& sampler) const {
-    Vec3 result = pointLighting(hit, outgoing);
+    Vec3 result = pointLighting(hit, material, outgoing);
     const std::size_t lightCount = sampledLightCount();
     if (lightCount == 0) {
         return result;
@@ -217,7 +219,6 @@ Vec3 Scene::directLighting(
         return result;
     }
 
-    const Material& material = hit.shape->getMaterial();
     const double bsdfPdf = Bsdf::pdf(
         material, hit.normal, outgoing, lightDirection);
     const double weight = powerHeuristic(lightPdf, bsdfPdf);
@@ -295,7 +296,9 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
             break;
         }
 
-        const Material& material = hit.shape->getMaterial();
+        Material material = hit.shape->getMaterial();
+        material.albedo =
+            material.colorAt(hit.u, hit.v, hit.point);
         double emissionWeight = 1.0;
         if (bounce > 0 && !previousWasDelta &&
             !material.emission.near(Vec3())) {
@@ -311,7 +314,7 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
         if (Bsdf::hasNonDeltaLobe(material)) {
             radiance = radiance +
                 throughput.elementwiseMultiply(
-                    directLighting(hit, outgoing, sampler));
+                    directLighting(hit, material, outgoing, sampler));
         }
 
         const BsdfSample bsdfSample = Bsdf::sample(

@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 path tracer. Version 0.7 adds AABB/BVH acceleration, iterative
-hierarchy traversal, infinite-geometry fallback, tile-based multithreading, and
-render throughput metrics.
+A small C++11 path tracer. Version 1.0 adds thin-lens depth of field, motion blur,
+triangles and OBJ meshes, transformed instances, UV coordinates, and procedural
+or image textures.
 
 ## Building
 
@@ -21,6 +21,9 @@ Run the demo renderer with an optional output path and image-quality settings:
   --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1 \
   --env-map studio.ppm --env-intensity 1.5 --tile-size 16
 ```
+
+Lens and shutter controls are available through `--aperture`, `--focus`,
+`--shutter-open`, and `--shutter-close`.
 
 Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
 in photographic stops. A preview interval of zero disables intermediate output.
@@ -56,6 +59,7 @@ ctest --test-dir build-sanitize --output-on-failure
 ## Source layout
 
 - `raytracer/src/Acceleration` — AABBs and iterative BVH traversal
+- `raytracer/src/Textures` — solid, checker, and PPM image textures
 
 - `raytracer/src/Math` — vectors, quaternions, and rays
 - `raytracer/src/Materials` — diffuse, mirror, dielectric, and emissive

@@ -11,9 +11,12 @@ struct HitRecord {
     Vec3 normal;
     bool frontFace;
     const Shape* shape;
+    double u;
+    double v;
 
     HitRecord()
-        : distance(0.0), point(), normal(), frontFace(true), shape(nullptr) {
+        : distance(0.0), point(), normal(), frontFace(true), shape(nullptr),
+          u(0.0), v(0.0) {
     }
 
     void setFaceNormal(const Ray& ray, const Vec3& outwardNormal) {
@@ -23,4 +26,3 @@ struct HitRecord {
 };
 
 #endif
-

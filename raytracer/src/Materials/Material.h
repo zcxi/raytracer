@@ -2,6 +2,8 @@
 #define RAYTRACER_MATERIAL_H
 
 #include "../Math/Vec3.h"
+#include "../Textures/Texture.h"
+#include <memory>
 
 enum class MaterialType {
     Diffuse,
@@ -18,6 +20,7 @@ struct Material {
     double roughness;
     double metallic;
     double transmission;
+    std::shared_ptr<Texture> texture;
 
     Material(MaterialType type = MaterialType::Diffuse,
              const Vec3& albedo = Vec3(0.8, 0.8, 0.8),
@@ -25,7 +28,9 @@ struct Material {
              double refractiveIndex = 1.5,
              double roughness = 1.0,
              double metallic = 0.0,
-             double transmission = 0.0);
+             double transmission = 0.0,
+             std::shared_ptr<Texture> texture =
+                 std::shared_ptr<Texture>());
 
     static Material diffuse(const Vec3& albedo,
                             const Vec3& emission = Vec3());
@@ -42,6 +47,8 @@ struct Material {
         double transmission = 0.0,
         double refractiveIndex = 1.5,
         const Vec3& emission = Vec3());
+    Material withTexture(std::shared_ptr<Texture> texture) const;
+    Vec3 colorAt(double u, double v, const Vec3& point) const;
 };
 
 #endif

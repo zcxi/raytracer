@@ -62,10 +62,12 @@ class Scene {
 
     private:
         Vec3 directLighting(
-            const HitRecord& hit, const Vec3& outgoing,
+            const HitRecord& hit, const Material& material,
+            const Vec3& outgoing,
             Sampler& sampler) const;
         Vec3 pointLighting(
-            const HitRecord& hit, const Vec3& outgoing) const;
+            const HitRecord& hit, const Material& material,
+            const Vec3& outgoing) const;
         double emissiveLightPdf(
             const Vec3& origin, const HitRecord& lightHit) const;
         double environmentLightPdf(const Vec3& direction) const;

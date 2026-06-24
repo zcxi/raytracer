@@ -53,7 +53,11 @@ bool Sphere::intersect(const Ray& ray, double minDistance,
 
     hit.distance = root;
     hit.point = ray.at(root);
-    hit.setFaceNormal(ray, (hit.point - center) / radius);
+    const Vec3 outward = (hit.point - center) / radius;
+    hit.setFaceNormal(ray, outward);
+    const double pi = 3.14159265358979323846;
+    hit.u = 0.5 + std::atan2(outward.Z(), outward.X()) / (2.0 * pi);
+    hit.v = 0.5 - std::asin(outward.Y()) / pi;
     hit.shape = this;
     return true;
 }

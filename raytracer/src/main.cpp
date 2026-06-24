@@ -16,6 +16,10 @@
 #include "Shapes/Pyramid.h"
 #include "Shapes/Rectangle.h"
 #include "Shapes/RectangularPrism.h"
+#include "Shapes/MovingSphere.h"
+#include "Shapes/ObjMesh.h"
+#include "Shapes/Transform.h"
+#include "Textures/Texture.h"
 
 namespace {
 
@@ -26,6 +30,10 @@ struct CommandLineOptions {
     std::string environmentMap;
     double environmentIntensity;
     bool accelerationEnabled;
+    double aperture;
+    double focusDistance;
+    double shutterOpen;
+    double shutterClose;
 
     CommandLineOptions()
         : outputPath("output.ppm"),
@@ -33,7 +41,11 @@ struct CommandLineOptions {
           outputSettings(0.0, ToneMapper::Aces),
           environmentMap(),
           environmentIntensity(1.0),
-          accelerationEnabled(true) {
+          accelerationEnabled(true),
+          aperture(0.35),
+          focusDistance(58.0),
+          shutterOpen(0.0),
+          shutterClose(1.0) {
     }
 };
 
@@ -95,7 +107,11 @@ void printUsage() {
         << "  --tile-size N     Square render tile size (default: 16)\n"
         << "  --env-map PATH    Lat-long P6 PPM environment map\n"
         << "  --env-intensity N Environment multiplier (default: 1)\n"
-        << "  --no-bvh          Disable BVH for diagnostics/benchmarking\n";
+        << "  --no-bvh          Disable BVH for diagnostics/benchmarking\n"
+        << "  --aperture N      Lens aperture diameter (default: 0.35)\n"
+        << "  --focus N         Focus distance (default: 58)\n"
+        << "  --shutter-open N  Shutter start time (default: 0)\n"
+        << "  --shutter-close N Shutter end time (default: 1)\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -157,6 +173,14 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
                 throw std::invalid_argument(
                     "--env-intensity requires a finite non-negative number.");
             }
+        } else if (argument == "--aperture") {
+            options.aperture = std::stod(value);
+        } else if (argument == "--focus") {
+            options.focusDistance = std::stod(value);
+        } else if (argument == "--shutter-open") {
+            options.shutterOpen = std::stod(value);
+        } else if (argument == "--shutter-close") {
+            options.shutterClose = std::stod(value);
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
@@ -169,6 +193,10 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
     }
     if (options.renderSettings.tileSize == 0) {
         throw std::invalid_argument("Tile size must be positive.");
+    }
+    if (options.aperture < 0.0 || options.focusDistance <= 0.0 ||
+        options.shutterClose < options.shutterOpen) {
+        throw std::invalid_argument("Invalid camera lens or shutter options.");
     }
     return options;
 }
@@ -189,6 +217,10 @@ void demo1(const CommandLineOptions& options) {
     }
     scene.setEnvironment(environment);
     scene.setAccelerationEnabled(options.accelerationEnabled);
+    const std::shared_ptr<Texture> checker(
+        new CheckerTexture(
+            Vec3(0.12, 0.04, 0.03),
+            Vec3(0.55, 0.22, 0.12), 0.35));
 
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, 7, -58), 4.0,
@@ -212,6 +244,21 @@ void demo1(const CommandLineOptions& options) {
                         Vec3(1.0, 0.58, 0.08),
                         0.22, 0.9, 0.0))));
     scene.addShape(std::unique_ptr<Shape>(
+        new MovingSphere(
+            Vec3(-1.5, -1.0, -52), Vec3(1.5, -1.0, -52),
+            0.0, 1.0, 1.2,
+            Material::principled(
+                Vec3(0.85, 0.15, 0.08), 0.3, 0.0, 0.0))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Transform(
+            std::unique_ptr<Shape>(
+                new ObjMesh(
+                    "assets/demo.obj",
+                    Material::principled(
+                        Vec3(0.2, 0.45, 0.95), 0.25, 0.35, 0.0))),
+            Vec3(0, 1, -55), Vec3(0.2, 0.5, 0.15),
+            Vec3(1.5, 1.5, 1.5))));
+    scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(0, 14, -59), 2.0,
                    Material::diffuse(
                        Vec3(0.0, 0.0, 0.0),
@@ -227,10 +274,12 @@ void demo1(const CommandLineOptions& options) {
         new Plane(Vec3(0, 0, -1), Vec3(0, 0, -64),
                   Material::principled(
                       Vec3(0.5, 0.16, 0.12),
-                      0.82, 0.0, 0.0))));
+                      0.82, 0.0, 0.0).withTexture(checker))));
 
     Camera camera(Vec3(0, 0.1, 0), Vec3(),
-                  640, 640, pi / 6);
+                  640, 640, pi / 6,
+                  options.aperture, options.focusDistance,
+                  options.shutterOpen, options.shutterClose);
     ImageWriter imageWriter(options.outputPath, options.outputSettings);
     Renderer render(
         imageWriter, scene, camera, options.renderSettings);
