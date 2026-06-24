@@ -84,6 +84,8 @@ self-shadow artifacts, negative lighting, or camera-direction errors.
 
 ## Phase 2: Sampling and Image Quality
 
+**Status: completed for v0.3 on June 24, 2026.**
+
 - Cast multiple jittered samples through each pixel.
 - Average samples in linear color space.
 - Use a deterministic, independently seeded random-number generator per worker.
@@ -93,6 +95,19 @@ self-shadow artifacts, negative lighting, or camera-direction errors.
 
 **Visible result:** smooth silhouettes, reduced aliasing, and preserved highlight
 detail.
+
+### Delivered in v0.3
+
+- Added configurable jittered samples per pixel with linear-space accumulation.
+- Added deterministic per-pixel/per-sample random streams independent of thread
+  scheduling.
+- Added pass-based progressive rendering and configurable periodic output.
+- Added exposure control in photographic stops.
+- Added selectable Reinhard and ACES tone mapping before sRGB conversion.
+- Added command-line controls for samples, previews, exposure, tone mapping,
+  random seed, and worker count.
+- Added focused tests for deterministic jitter, exposure, tone mapping, and
+  invalid sampling configuration.
 
 ## Phase 3: Materials and Secondary Rays
 
@@ -164,7 +179,7 @@ Completed June 24, 2026.
 
 ### v0.3 — Clean Images
 
-Complete Phase 2 with multisampling, gamma correction, exposure, and tone mapping.
+Completed June 24, 2026.
 
 ### v0.4 — First Path Tracer
 

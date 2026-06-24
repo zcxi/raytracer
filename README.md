@@ -1,9 +1,8 @@
 # raytracer
 
 A small C++11 ray tracer being evolved into a physically based path tracer.
-Version 0.2 establishes a correctness-focused foundation with robust ray
-intervals, hit records, camera orientation, linear color, sRGB output, portable
-builds, and automated tests.
+Version 0.3 adds deterministic multisampling, progressive output, exposure
+control, and HDR tone mapping on top of the correctness-focused v0.2 foundation.
 
 ## Building
 
@@ -15,11 +14,17 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Run the demo renderer with an optional output path:
+Run the demo renderer with an optional output path and image-quality settings:
 
 ```sh
-./build/raytracer output.ppm
+./build/raytracer output.ppm --samples 64 --exposure 0.5 \
+  --tone-map aces --preview 8 --seed 1
 ```
+
+Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
+in photographic stops. A preview interval of zero disables intermediate output.
+Sampling is deterministic: the same scene, sample count, and seed produce the
+same image regardless of worker scheduling.
 
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the

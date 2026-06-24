@@ -1,5 +1,6 @@
 #include "Math/Quaternion.h"
 #include "Math/Ray.h"
+#include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Light/PointSource.h"
 #include "Scene/Scene.h"
@@ -285,6 +286,47 @@ void testImageEncoding() {
            "HDR values clamp safely during image conversion.");
     expect(std::abs(static_cast<int>(ImageWriter::toByte(0.18)) - 118) <= 1,
            "Linear values are converted to sRGB rather than truncated.");
+
+    expectNear(ImageWriter::applyExposure(0.25, 2.0), 1.0, 1e-9,
+               "Exposure is measured in photographic stops.");
+    expectNear(ImageWriter::toneMap(1.0, ToneMapper::Reinhard),
+               0.5, 1e-9, "Reinhard tone mapping compresses highlights.");
+    expect(ImageWriter::toneMap(4.0, ToneMapper::Aces) < 1.0,
+           "ACES tone mapping keeps HDR highlights in display range.");
+    expect(ImageWriter::toneMap(4.0, ToneMapper::Aces) >
+               ImageWriter::toneMap(1.0, ToneMapper::Aces),
+           "ACES tone mapping remains monotonic for common HDR values.");
+    expect(ImageWriter::toByte(4.0, 0.0, ToneMapper::Reinhard) < 255,
+           "Tone mapping preserves detail that direct clamping would lose.");
+}
+
+void testDeterministicSampling() {
+    const double first =
+        Renderer::sampleOffset(42, 3, 1234, 0);
+    const double repeated =
+        Renderer::sampleOffset(42, 3, 1234, 0);
+    const double otherDimension =
+        Renderer::sampleOffset(42, 3, 1234, 1);
+    const double otherSample =
+        Renderer::sampleOffset(42, 4, 1234, 0);
+
+    expectNear(first, repeated, 0.0,
+               "Jitter is deterministic for a pixel, sample, and seed.");
+    expect(first >= 0.0 && first < 1.0,
+           "Horizontal jitter remains inside the pixel.");
+    expect(otherDimension >= 0.0 && otherDimension < 1.0,
+           "Vertical jitter remains inside the pixel.");
+    expect(first != otherDimension,
+           "Sampling dimensions receive independent jitter.");
+    expect(first != otherSample,
+           "Successive samples receive different jitter.");
+    expectThrows([]() {
+        Scene scene;
+        Camera camera(Vec3(), Vec3(), 1, 1, PI * 0.5);
+        ImageWriter writer("unused.ppm");
+        Renderer invalid(writer, scene, camera, RenderSettings(0));
+        (void)invalid;
+    }, "Renderers reject zero samples per pixel.");
 }
 
 } // namespace
@@ -301,6 +343,7 @@ int main() {
         testCamera();
         testDirectLightingAndShadows();
         testImageEncoding();
+        testDeterministicSampling();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

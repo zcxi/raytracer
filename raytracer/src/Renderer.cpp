@@ -4,28 +4,58 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <iostream>
 #include <stdexcept>
 #include "Renderer.h"
 #include <thread>
 
 Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
-                   const Camera& cameraRef)
-    : imageWriter(writer), scene(sceneRef), camera(cameraRef) {
+                   const Camera& cameraRef, const RenderSettings& renderSettings)
+    : imageWriter(writer),
+      scene(sceneRef),
+      camera(cameraRef),
+      settings(renderSettings) {
+    if (settings.samplesPerPixel == 0) {
+        throw std::invalid_argument("Samples per pixel must be positive.");
+    }
 }
 
-void Renderer::render(){
+double Renderer::sampleOffset(std::size_t pixelIndex,
+                              unsigned int sampleIndex,
+                              std::uint64_t seed,
+                              unsigned int dimension) {
+    std::uint64_t value = seed;
+    value ^= static_cast<std::uint64_t>(pixelIndex) +
+             0x9e3779b97f4a7c15ULL + (value << 6) + (value >> 2);
+    value ^= static_cast<std::uint64_t>(sampleIndex) *
+             0xbf58476d1ce4e5b9ULL;
+    value ^= static_cast<std::uint64_t>(dimension) *
+             0x94d049bb133111ebULL;
+    value ^= value >> 30;
+    value *= 0xbf58476d1ce4e5b9ULL;
+    value ^= value >> 27;
+    value *= 0x94d049bb133111ebULL;
+    value ^= value >> 31;
 
+    const std::uint64_t mantissa = value >> 11;
+    return static_cast<double>(mantissa) *
+           (1.0 / 9007199254740992.0);
+}
+
+void Renderer::renderPass(unsigned int sampleIndex) {
     const int height = camera.getImageHeight();
     const int width = camera.getImageWidth();
-    frameBuffer.assign(height, std::vector<Vec3>(width, Vec3()));
-
     const std::size_t pixelCount =
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     std::atomic<std::size_t> nextPixel(0);
 
-    unsigned int numThreads = std::thread::hardware_concurrency();
+    unsigned int numThreads = settings.workerCount;
     if (numThreads == 0) {
-        numThreads = 1;
+        numThreads = std::thread::hardware_concurrency();
+        if (numThreads == 0) {
+            numThreads = 1;
+        }
     }
     numThreads = static_cast<unsigned int>(
         std::min<std::size_t>(numThreads, pixelCount));
@@ -33,7 +63,8 @@ void Renderer::render(){
     pool.reserve(numThreads);
 
     for (unsigned int threadIndex = 0; threadIndex < numThreads; ++threadIndex) {
-        pool.emplace_back([this, width, pixelCount, &nextPixel]() {
+        pool.emplace_back(
+            [this, width, pixelCount, sampleIndex, &nextPixel]() {
             while (true) {
                 const std::size_t index = nextPixel.fetch_add(1);
                 if (index >= pixelCount) {
@@ -42,8 +73,16 @@ void Renderer::render(){
 
                 const int row = static_cast<int>(index / width);
                 const int column = static_cast<int>(index % width);
-                const Ray ray = camera.makeRay(column + 0.5, row + 0.5);
-                frameBuffer[row][column] = scene.trace(ray);
+                const double offsetX =
+                    sampleOffset(index, sampleIndex,
+                                 settings.randomSeed, 0);
+                const double offsetY =
+                    sampleOffset(index, sampleIndex,
+                                 settings.randomSeed, 1);
+                const Ray ray =
+                    camera.makeRay(column + offsetX, row + offsetY);
+                accumulationBuffer[row][column] =
+                    accumulationBuffer[row][column] + scene.trace(ray);
             }
         });
     }
@@ -51,7 +90,42 @@ void Renderer::render(){
         worker.join();
     }
 
-    if (!imageWriter.write(frameBuffer)) {
-        throw std::runtime_error("Failed to write rendered image.");
+}
+
+std::vector<std::vector<Vec3>> Renderer::averagedFrame(
+        unsigned int completedSamples) const {
+    std::vector<std::vector<Vec3>> result = accumulationBuffer;
+    const double sampleCount = static_cast<double>(completedSamples);
+    for (auto& row : result) {
+        for (auto& pixel : row) {
+            pixel = pixel / sampleCount;
+        }
+    }
+    return result;
+}
+
+void Renderer::render() {
+    const int height = camera.getImageHeight();
+    const int width = camera.getImageWidth();
+    accumulationBuffer.assign(
+        height, std::vector<Vec3>(width, Vec3()));
+
+    for (unsigned int sample = 0;
+         sample < settings.samplesPerPixel; ++sample) {
+        renderPass(sample);
+        const unsigned int completedSamples = sample + 1;
+        const bool finalPass =
+            completedSamples == settings.samplesPerPixel;
+        const bool previewPass =
+            settings.previewInterval > 0 &&
+            completedSamples % settings.previewInterval == 0;
+        if (finalPass || previewPass) {
+            if (!imageWriter.write(averagedFrame(completedSamples))) {
+                throw std::runtime_error("Failed to write rendered image.");
+            }
+            std::cout << "Rendered " << completedSamples << "/"
+                      << settings.samplesPerPixel
+                      << " samples per pixel." << std::endl;
+        }
     }
 }
