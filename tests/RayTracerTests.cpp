@@ -2,6 +2,7 @@
 #include "Math/Ray.h"
 #include "Math/Sampler.h"
 #include "Materials/Material.h"
+#include "Materials/Bsdf.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Environment.h"
@@ -251,7 +252,7 @@ void testCamera() {
 }
 
 void testDirectLightingAndShadows() {
-    Scene litScene(Vec3(0.1, 0.2, 0.3));
+    Scene litScene;
     litScene.addShape(std::unique_ptr<Shape>(
         new Plane(Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -1.0),
                   Vec3(1.0, 1.0, 1.0), Vec3(), 0.0, 1.0)));
@@ -260,11 +261,12 @@ void testDirectLightingAndShadows() {
                         4.0 * PI * PI)));
 
     const Vec3 lit = litScene.trace(Ray(Vec3(), Vec3(0.0, 0.0, -1.0)));
-    expectVecNear(lit, Vec3(1.0, 0.0, 0.0), 1e-6,
-                  "Direct lighting clamps N dot L and includes light color.");
+    expectVecNear(lit, Vec3(0.97, 0.0, 0.0), 1e-6,
+                  "PBR direct lighting includes light color and conserved energy.");
 
+    Scene backgroundScene(Vec3(0.1, 0.2, 0.3));
     const Vec3 background =
-        litScene.trace(Ray(Vec3(), Vec3(0.0, 1.0, 0.0)));
+        backgroundScene.trace(Ray(Vec3(), Vec3(0.0, 1.0, 0.0)));
     expectVecNear(background, Vec3(0.1, 0.2, 0.3), 1e-9,
                   "Missed rays return the configured linear background.");
 
@@ -399,6 +401,71 @@ void testMaterialsAndOptics() {
                Vec3(0.98, -0.2, 0.0).normalize(),
                Vec3(0.0, 1.0, 0.0), 1.5),
            "A steep inside ray triggers total internal reflection.");
+}
+
+void testPhysicallyBasedMaterials() {
+    const Material plastic = Material::principled(
+        Vec3(0.2, 0.4, 0.8), 0.35, 0.0, 0.0, 1.5);
+    const Material metal = Material::principled(
+        Vec3(0.9, 0.6, 0.2), 0.2, 1.0, 0.0, 1.5);
+    const Material transmission = Material::principled(
+        Vec3(1.0, 1.0, 1.0), 0.05, 0.0, 0.8, 1.45);
+    expect(plastic.type == MaterialType::Principled,
+           "Principled factory creates a PBR material.");
+    expectNear(plastic.roughness, 0.35, 1e-9,
+               "Principled material stores roughness.");
+    expectNear(metal.metallic, 1.0, 1e-9,
+               "Principled material stores metallic weight.");
+    expectNear(transmission.transmission, 0.8, 1e-9,
+               "Principled material stores transmission weight.");
+    expectThrows([]() {
+        const Material invalid = Material::principled(
+            Vec3(0.5, 0.5, 0.5), 1.1, 0.0, 0.0);
+        (void)invalid;
+    }, "Principled materials reject roughness above one.");
+
+    expectVecNear(
+        Bsdf::fresnelSchlick(
+            1.0, Vec3(0.04, 0.04, 0.04)),
+        Vec3(0.04, 0.04, 0.04), 1e-9,
+        "Schlick Fresnel equals F0 at normal incidence.");
+    expectVecNear(
+        Bsdf::fresnelSchlick(
+            0.0, Vec3(0.04, 0.04, 0.04)),
+        Vec3(1.0, 1.0, 1.0), 1e-9,
+        "Schlick Fresnel approaches one at grazing angles.");
+    expect(Bsdf::ggxDistribution(1.0, 0.1) >
+               Bsdf::ggxDistribution(1.0, 0.8),
+           "Smoother GGX surfaces have sharper normal peaks.");
+    const double masking = Bsdf::smithMasking(0.6, 0.7, 0.4);
+    expect(masking > 0.0 && masking <= 1.0,
+           "Smith masking remains a valid attenuation factor.");
+
+    const Vec3 normal(0.0, 0.0, 1.0);
+    const Vec3 view(0.0, 0.0, 1.0);
+    const Vec3 light(0.0, 0.0, 1.0);
+    const Vec3 plasticValue =
+        Bsdf::evaluate(plastic, normal, view, light);
+    const Vec3 metalValue =
+        Bsdf::evaluate(metal, normal, view, light);
+    expect(plasticValue.X() > 0.0 &&
+               plasticValue.Y() > plasticValue.X(),
+           "PBR plastic retains colored diffuse reflection.");
+    expect(metalValue.X() > metalValue.Z(),
+           "Metal Fresnel reflection is tinted by base color.");
+
+    Sampler firstSampler(20, 3, 77);
+    Sampler secondSampler(20, 3, 77);
+    const BsdfSample first =
+        Bsdf::sample(plastic, normal, view, true, firstSampler);
+    const BsdfSample second =
+        Bsdf::sample(plastic, normal, view, true, secondSampler);
+    expect(first.valid && first.pdf > 0.0 && !first.delta,
+           "Principled opaque BSDF produces a valid sampled lobe.");
+    expectVecNear(first.direction, second.direction, 0.0,
+                  "GGX importance sampling is deterministic.");
+    expectVecNear(first.weight, second.weight, 0.0,
+                  "Sampled PBR throughput is deterministic.");
 }
 
 void testSecondaryRayTransport() {
@@ -552,6 +619,7 @@ int main() {
         testImageEncoding();
         testDeterministicSampling();
         testMaterialsAndOptics();
+        testPhysicallyBasedMaterials();
         testSecondaryRayTransport();
         testAreaLightsAndEnvironment();
     } catch (const std::exception& error) {

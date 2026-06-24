@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(raytracer VERSION 0.5.0 LANGUAGES CXX)
+project(raytracer VERSION 0.6.0 LANGUAGES CXX)
 
 option(RAYTRACER_ENABLE_SANITIZERS
        "Enable address and undefined-behavior sanitizers" OFF)
@@ -15,6 +15,7 @@ set(RAYTRACER_SOURCES
     raytracer/src/Math/Quaternion.cpp
     raytracer/src/Math/Sampler.cpp
     raytracer/src/Math/Vec3.cpp
+    raytracer/src/Materials/Bsdf.cpp
     raytracer/src/Materials/Material.cpp
     raytracer/src/Renderer.cpp
     raytracer/src/Scene/Camera.cpp

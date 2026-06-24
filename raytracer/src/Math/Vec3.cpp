@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include "Vec3.h"
 
+constexpr double Vec3::EPSILON;
+constexpr double Vec3::EPISLON;
 
 Vec3::Vec3() : coord(3, 0.0) {}
 

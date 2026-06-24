@@ -34,7 +34,7 @@ bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
     HitRecord ignored;
     for (const auto& object : shapes) {
         if (object->intersect(ray, RAY_EPSILON, maxDistance, ignored)) {
-            if (object->getMaterial().type != MaterialType::Dielectric) {
+            if (object->getMaterial().transmission <= 0.0) {
                 return true;
             }
         }
@@ -47,8 +47,8 @@ Vec3 Scene::trace(const Ray& ray) const {
     return trace(ray, sampler, PathTraceSettings(1, 1));
 }
 
-Vec3 Scene::pointLighting(const HitRecord& hit) const {
-    const double pi = 3.14159265358979323846;
+Vec3 Scene::pointLighting(
+        const HitRecord& hit, const Vec3& outgoing) const {
     Vec3 result;
     for (const auto& lightSource : lightSources) {
         const Vec3 pointToLight = lightSource->getPosition() - hit.point;
@@ -58,9 +58,9 @@ Vec3 Scene::pointLighting(const HitRecord& hit) const {
         }
 
         const Vec3 lightDirection = pointToLight / lightDistance;
-        const double angleIntensity =
+        const double surfaceCosine =
             std::max(0.0, hit.normal.dot(lightDirection));
-        if (angleIntensity <= 0.0) {
+        if (surfaceCosine <= 0.0) {
             continue;
         }
 
@@ -72,10 +72,13 @@ Vec3 Scene::pointLighting(const HitRecord& hit) const {
 
         const double distanceIntensity =
             lightSource->getIncidentBrightness(hit.point);
-        const Vec3 incomingLight =
-            lightSource->getColor() * (angleIntensity * distanceIntensity);
-        result = result +
-            hit.shape->getSurfaceColor().elementwiseMultiply(incomingLight) / pi;
+        const Vec3 incomingRadiance =
+            lightSource->getColor() * distanceIntensity;
+        const Vec3 bsdf = Bsdf::evaluate(
+            hit.shape->getMaterial(), hit.normal,
+            outgoing, lightDirection);
+        result = result + bsdf.elementwiseMultiply(incomingRadiance) *
+            surfaceCosine;
     }
     return result;
 }
@@ -122,9 +125,9 @@ double Scene::environmentLightPdf(const Vec3& direction) const {
 }
 
 Vec3 Scene::directLighting(
-        const HitRecord& hit, Sampler& sampler) const {
-    const double pi = 3.14159265358979323846;
-    Vec3 result = pointLighting(hit);
+        const HitRecord& hit, const Vec3& outgoing,
+        Sampler& sampler) const {
+    Vec3 result = pointLighting(hit, outgoing);
     const std::size_t lightCount = sampledLightCount();
     if (lightCount == 0) {
         return result;
@@ -179,9 +182,12 @@ Vec3 Scene::directLighting(
         return result;
     }
 
-    const double bsdfPdf = surfaceCosine / pi;
+    const Material& material = hit.shape->getMaterial();
+    const double bsdfPdf = Bsdf::pdf(
+        material, hit.normal, outgoing, lightDirection);
     const double weight = powerHeuristic(lightPdf, bsdfPdf);
-    const Vec3 bsdf = hit.shape->getMaterial().albedo / pi;
+    const Vec3 bsdf = Bsdf::evaluate(
+        material, hit.normal, outgoing, lightDirection);
     return result + bsdf.elementwiseMultiply(incomingRadiance) *
         (surfaceCosine * weight / lightPdf);
 }
@@ -222,27 +228,6 @@ double Scene::schlickReflectance(double cosine,
     return base + (1.0 - base) *
         oneMinusCosine * oneMinusCosine * oneMinusCosine *
         oneMinusCosine * oneMinusCosine;
-}
-
-Vec3 Scene::cosineHemisphere(const Vec3& normal, Sampler& sampler) {
-    const double pi = 3.14159265358979323846;
-    const double first = sampler.next();
-    const double second = sampler.next();
-    const double radius = std::sqrt(first);
-    const double angle = 2.0 * pi * second;
-    const double localX = radius * std::cos(angle);
-    const double localY = radius * std::sin(angle);
-    const double localZ = std::sqrt(std::max(0.0, 1.0 - first));
-
-    const Vec3 helper =
-        std::abs(normal.X()) > 0.9
-            ? Vec3(0.0, 1.0, 0.0)
-            : Vec3(1.0, 0.0, 0.0);
-    const Vec3 tangent = helper.cross(normal).normalize();
-    const Vec3 bitangent = normal.cross(tangent);
-    return (tangent * localX +
-            bitangent * localY +
-            normal * localZ).normalize();
 }
 
 Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
@@ -287,47 +272,23 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
             throughput.elementwiseMultiply(material.emission) *
             emissionWeight;
 
-        Vec3 scatteredDirection;
-        if (material.type == MaterialType::Diffuse) {
+        const Vec3 outgoing = -currentRay.direction();
+        if (Bsdf::hasNonDeltaLobe(material)) {
             radiance = radiance +
                 throughput.elementwiseMultiply(
-                    directLighting(hit, sampler));
-            scatteredDirection = cosineHemisphere(hit.normal, sampler);
-            previousBsdfPdf =
-                std::max(0.0, hit.normal.dot(scatteredDirection)) /
-                3.14159265358979323846;
-            previousWasDelta = false;
-        } else if (material.type == MaterialType::Mirror) {
-            scatteredDirection =
-                reflect(currentRay.direction(), hit.normal).normalize();
-            previousBsdfPdf = 0.0;
-            previousWasDelta = true;
-        } else {
-            const double refractionRatio = hit.frontFace
-                ? 1.0 / material.refractiveIndex
-                : material.refractiveIndex;
-            const double cosine = std::min(
-                (-currentRay.direction()).dot(hit.normal), 1.0);
-            const bool cannotRefract =
-                hasTotalInternalReflection(
-                    currentRay.direction(), hit.normal,
-                    refractionRatio);
-            if (cannotRefract ||
-                sampler.next() <
-                    schlickReflectance(cosine, refractionRatio)) {
-                scatteredDirection =
-                    reflect(currentRay.direction(), hit.normal).normalize();
-            } else {
-                scatteredDirection =
-                    refract(currentRay.direction(), hit.normal,
-                            refractionRatio);
-            }
-            previousBsdfPdf = 0.0;
-            previousWasDelta = true;
+                    directLighting(hit, outgoing, sampler));
         }
 
+        const BsdfSample bsdfSample = Bsdf::sample(
+            material, hit.normal, outgoing,
+            hit.frontFace, sampler);
+        if (!bsdfSample.valid) {
+            break;
+        }
         throughput =
-            throughput.elementwiseMultiply(material.albedo);
+            throughput.elementwiseMultiply(bsdfSample.weight);
+        previousBsdfPdf = bsdfSample.pdf;
+        previousWasDelta = bsdfSample.delta;
 
         if (bounce + 1 >= settings.russianRouletteStart) {
             const double maximumComponent = std::max(
@@ -342,11 +303,11 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
         }
 
         const double side =
-            scatteredDirection.dot(hit.normal) >= 0.0 ? 1.0 : -1.0;
+            bsdfSample.direction.dot(hit.normal) >= 0.0 ? 1.0 : -1.0;
         previousPoint = hit.point;
         currentRay = Ray(
             hit.point + hit.normal * (RAY_EPSILON * side),
-            scatteredDirection);
+            bsdfSample.direction);
     }
     return radiance;
 }

@@ -11,6 +11,7 @@
 #include "../shapes/Shape.h"
 #include "../Math/Ray.h"
 #include "../Math/Sampler.h"
+#include "../Materials/Bsdf.h"
 #include <memory>
 
 struct PathTraceSettings {
@@ -53,13 +54,14 @@ class Scene {
 
     private:
         Vec3 directLighting(
-            const HitRecord& hit, Sampler& sampler) const;
-        Vec3 pointLighting(const HitRecord& hit) const;
+            const HitRecord& hit, const Vec3& outgoing,
+            Sampler& sampler) const;
+        Vec3 pointLighting(
+            const HitRecord& hit, const Vec3& outgoing) const;
         double emissiveLightPdf(
             const Vec3& origin, const HitRecord& lightHit) const;
         double environmentLightPdf(const Vec3& direction) const;
         std::size_t sampledLightCount() const;
-        static Vec3 cosineHemisphere(const Vec3& normal, Sampler& sampler);
         Environment environment;
         std::vector<std::unique_ptr<Shape>> shapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;

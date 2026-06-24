@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 path tracer. Version 0.5 adds sampled emissive geometry,
-rectangular and spherical area lights, soft shadows, environment lighting, and
-multiple importance sampling.
+A small C++11 path tracer. Version 0.6 adds physically based materials with
+Cook-Torrance GGX reflection, Smith masking, Schlick Fresnel, metallic/roughness
+parameters, transmission, and importance-sampled BSDF lobes.
 
 ## Building
 
@@ -27,9 +27,10 @@ in photographic stops. A preview interval of zero disables intermediate output.
 Sampling is deterministic: the same scene, sample count, and seed produce the
 same image regardless of worker scheduling.
 
-Materials are created with `Material::diffuse`, `Material::mirror`, and
-`Material::dielectric`. Diffuse paths use cosine-weighted hemisphere sampling;
-point lights are sampled directly at every diffuse bounce to reduce noise.
+Materials can be created with `Material::principled(baseColor, roughness,
+metallic, transmission, ior)`. Legacy `diffuse`, `mirror`, and `dielectric`
+factories remain available. Principled surfaces combine an energy-aware diffuse
+lobe with Cook-Torrance GGX specular reflection and importance sampling.
 Emissive spheres and rectangles are automatically registered as area lights.
 Diffuse light and BSDF samples are combined with the power heuristic. A gradient
 environment is built in, and lat-long P6 PPM images can be loaded as environment

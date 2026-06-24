@@ -177,18 +177,25 @@ void demo1(const CommandLineOptions& options) {
 
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, 7, -58), 4.0,
-                   Material::mirror(Vec3(0.92, 0.97, 1.0)))));
+                   Material::principled(
+                       Vec3(0.92, 0.95, 1.0),
+                       0.08, 1.0, 0.0))));
     scene.addShape(std::unique_ptr<Shape>(
         new RectangularPrism(
             Vec3(7, 7, -58), Vec3(10, 6, 5),
-            Material::diffuse(Vec3(0.15, 0.8, 0.25)))));
+            Material::principled(
+                Vec3(0.08, 0.65, 0.18),
+                0.38, 0.0, 0.0))));
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, -7, -58), 4,
-                   Material::dielectric(
-                       1.5, Vec3(0.98, 0.99, 1.0)))));
+                   Material::principled(
+                       Vec3(0.98, 0.99, 1.0),
+                       0.03, 0.0, 1.0, 1.5))));
     scene.addShape(std::unique_ptr<Shape>(
         new Pyramid(Vec3(7, -11, -59), 10, 7, 10,
-                    Material::diffuse(Vec3(1.0, 0.65, 0.08)))));
+                    Material::principled(
+                        Vec3(1.0, 0.58, 0.08),
+                        0.22, 0.9, 0.0))));
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(0, 14, -59), 2.0,
                    Material::diffuse(
@@ -203,7 +210,9 @@ void demo1(const CommandLineOptions& options) {
                 Vec3(4.0, 5.0, 8.0)))));
     scene.addShape(std::unique_ptr<Shape>(
         new Plane(Vec3(0, 0, -1), Vec3(0, 0, -64),
-                  Material::diffuse(Vec3(0.55, 0.18, 0.15)))));
+                  Material::principled(
+                      Vec3(0.5, 0.16, 0.12),
+                      0.82, 0.0, 0.0))));
 
     Camera camera(Vec3(0, 0.1, 0), Vec3(),
                   640, 640, pi / 6);

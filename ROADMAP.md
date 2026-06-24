@@ -170,6 +170,8 @@ noise around small or bright lights.
 
 ## Phase 5: Physically Based Materials
 
+**Status: completed for v0.6 on June 24, 2026.**
+
 - Add base color, roughness, metallic, transmission, emission, and index of
   refraction parameters.
 - Implement a Cook-Torrance microfacet BRDF.
@@ -179,6 +181,18 @@ noise around small or bright lights.
 
 **Visible result:** convincing plastics, rough and polished metals, glossy paint,
 and more realistic highlights.
+
+### Delivered in v0.6
+
+- Added unified base color, roughness, metallic, transmission, emission, and IOR
+  material parameters.
+- Added Cook-Torrance microfacet BRDF evaluation.
+- Added GGX normal distribution and importance sampling.
+- Added Smith geometry masking and vector Schlick Fresnel.
+- Added energy-aware diffuse/specular lobe mixing for dielectrics and metals.
+- Added mixed diffuse/GGX PDFs for direct-light MIS and secondary transport.
+- Added deterministic principled transmission sampling.
+- Added PBR parameter, Fresnel, GGX, Smith, evaluation, and sampling tests.
 
 ## Phase 6: Performance and Scalability
 
@@ -204,6 +218,11 @@ remain practical to render.
 **Visible result:** richer scenes with photographic focus, detailed assets, and
 textured surfaces.
 
+### Phase 8: Quality of life improvements
+- Add a table to set objects on
+- Add output format in png or jpeg
+- Explore the use of Gpu Accelerated tracing
+
 ## Suggested Release Milestones
 
 ### v0.2 — Correct Renderer
@@ -224,7 +243,7 @@ Completed June 24, 2026.
 
 ### v0.6 — Physically Based Renderer
 
-Complete Phases 5 and 6 with microfacet materials and BVH acceleration.
+Phase 5 completed June 24, 2026. Phase 6 acceleration remains.
 
 ### v1.0 — Scene-Capable Renderer
 
