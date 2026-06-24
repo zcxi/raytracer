@@ -16,6 +16,7 @@ public:
 
     bool intersect(const Ray& ray, double minDistance,
                    double maxDistance, HitRecord& hit) const override;
+    bool boundingBox(Aabb& bounds) const override;
 
     const Vec3& getBaseCenter() const { return baseCenter; }
     double getBaseWidth() const { return baseWidth; }

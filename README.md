@@ -1,8 +1,8 @@
 # raytracer
 
-A small C++11 path tracer. Version 0.6 adds physically based materials with
-Cook-Torrance GGX reflection, Smith masking, Schlick Fresnel, metallic/roughness
-parameters, transmission, and importance-sampled BSDF lobes.
+A small C++11 path tracer. Version 0.7 adds AABB/BVH acceleration, iterative
+hierarchy traversal, infinite-geometry fallback, tile-based multithreading, and
+render throughput metrics.
 
 ## Building
 
@@ -19,7 +19,7 @@ Run the demo renderer with an optional output path and image-quality settings:
 ```sh
 ./build/raytracer output.ppm --samples 128 --bounces 8 \
   --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1 \
-  --env-map studio.ppm --env-intensity 1.5
+  --env-map studio.ppm --env-intensity 1.5 --tile-size 16
 ```
 
 Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
@@ -36,6 +36,10 @@ Diffuse light and BSDF samples are combined with the power heuristic. A gradient
 environment is built in, and lat-long P6 PPM images can be loaded as environment
 maps.
 
+Finite geometry is automatically placed in a BVH; infinite planes are tested
+separately. Use `--no-bvh` to compare against brute-force traversal. Each render
+reports total time, primary-sample throughput, and BVH node count.
+
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the
 configuration subdirectory.
@@ -50,6 +54,8 @@ ctest --test-dir build-sanitize --output-on-failure
 ```
 
 ## Source layout
+
+- `raytracer/src/Acceleration` — AABBs and iterative BVH traversal
 
 - `raytracer/src/Math` — vectors, quaternions, and rays
 - `raytracer/src/Materials` — diffuse, mirror, dielectric, and emissive

@@ -3,6 +3,8 @@
 #include "Math/Sampler.h"
 #include "Materials/Material.h"
 #include "Materials/Bsdf.h"
+#include "Acceleration/Aabb.h"
+#include "Acceleration/Bvh.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Environment.h"
@@ -603,6 +605,86 @@ void testAreaLightsAndEnvironment() {
            "Emissive rectangles are sampled as direct area lights.");
 }
 
+void testAccelerationStructures() {
+    const Aabb box(
+        Vec3(-1.0, -1.0, -6.0),
+        Vec3(1.0, 1.0, -4.0));
+    expect(box.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               0.0, 100.0),
+           "AABB slab traversal accepts a central ray.");
+    expect(!box.intersect(
+               Ray(Vec3(3.0, 0.0, 0.0), Vec3(0.0, 0.0, -1.0)),
+               0.0, 100.0),
+           "AABB slab traversal rejects a parallel outside ray.");
+    const Aabb combined = Aabb::surrounding(
+        box, Aabb(Vec3(2.0, -2.0, -7.0),
+                  Vec3(3.0, 2.0, -3.0)));
+    expectVecNear(
+        combined.min(), Vec3(-1.0, -2.0, -7.0), 1e-9,
+        "Surrounding AABB keeps component minima.");
+    expectVecNear(
+        combined.max(), Vec3(3.0, 2.0, -3.0), 1e-9,
+        "Surrounding AABB keeps component maxima.");
+
+    Sphere nearSphere(
+        Vec3(0.0, 0.0, -4.0), 1.0,
+        Material::diffuse(Vec3(1.0, 0.0, 0.0)));
+    Sphere farSphere(
+        Vec3(0.0, 0.0, -8.0), 1.0,
+        Material::diffuse(Vec3(0.0, 1.0, 0.0)));
+    std::vector<const Shape*> shapes;
+    shapes.push_back(&farSphere);
+    shapes.push_back(&nearSphere);
+    Bvh bvh;
+    bvh.build(shapes);
+    HitRecord bvhHit;
+    expect(bvh.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, bvhHit),
+           "BVH traversal finds bounded geometry.");
+    expect(bvhHit.shape == &nearSphere,
+           "BVH traversal returns the nearest shape.");
+    expect(bvh.nodeCount() > 0,
+           "BVH construction creates traversal nodes.");
+
+    Scene scene;
+    scene.addShape(std::unique_ptr<Shape>(
+        new Sphere(
+            Vec3(0.0, 0.0, -4.0), 1.0,
+            Material::diffuse(Vec3(1.0, 0.0, 0.0)))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Plane(
+            Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -10.0),
+            Material::diffuse(Vec3(0.5, 0.5, 0.5)))));
+    HitRecord acceleratedHit;
+    expect(scene.findClosestHit(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, acceleratedHit),
+           "Accelerated scene traversal finds a hit.");
+    scene.setAccelerationEnabled(false);
+    HitRecord bruteForceHit;
+    expect(scene.findClosestHit(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, bruteForceHit),
+           "Brute-force diagnostic traversal finds a hit.");
+    expectNear(
+        acceleratedHit.distance, bruteForceHit.distance, 1e-9,
+        "BVH and brute-force traversal agree on hit distance.");
+    expect(scene.boundedShapeCount() == 1,
+           "Infinite planes remain outside the BVH.");
+
+    expectThrows([]() {
+        Scene scene;
+        Camera camera(Vec3(), Vec3(), 1, 1, PI * 0.5);
+        ImageWriter writer("unused.ppm");
+        Renderer invalid(
+            writer, scene, camera,
+            RenderSettings(1, 0, 1, 1, 1, 1, 0));
+        (void)invalid;
+    }, "Renderers reject zero tile size.");
+}
+
 } // namespace
 
 int main() {
@@ -622,6 +704,7 @@ int main() {
         testPhysicallyBasedMaterials();
         testSecondaryRayTransport();
         testAreaLightsAndEnvironment();
+        testAccelerationStructures();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

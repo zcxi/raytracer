@@ -196,6 +196,8 @@ and more realistic highlights.
 
 ## Phase 6: Performance and Scalability
 
+**Status: completed for v0.7 on June 24, 2026.**
+
 - Add axis-aligned bounding boxes.
 - Build a bounding volume hierarchy for scene geometry.
 - Traverse the BVH iteratively or with shallow recursion.
@@ -205,6 +207,19 @@ and more realistic highlights.
 
 **Completion target:** scenes with many objects and hundreds of samples per pixel
 remain practical to render.
+
+### Delivered in v0.7
+
+- Added robust slab-tested axis-aligned bounding boxes.
+- Added bounds for spheres, rectangles, pyramids, cubes, and rectangular prisms.
+- Added median-split BVH construction along each node's longest axis.
+- Added iterative closest-hit and early-out occlusion traversal.
+- Kept infinite planes in a correct fallback path outside the BVH.
+- Added a brute-force `--no-bvh` diagnostic and benchmarking mode.
+- Replaced per-pixel atomic scheduling with configurable square render tiles.
+- Added pass timing, total render time, sample throughput, and BVH node metrics.
+- Added AABB, BVH nearest-hit, brute-force agreement, unbounded fallback, and
+  tile validation tests.
 
 ## Phase 7: Camera, Geometry, and Scene Features
 
@@ -243,7 +258,11 @@ Completed June 24, 2026.
 
 ### v0.6 — Physically Based Renderer
 
-Phase 5 completed June 24, 2026. Phase 6 acceleration remains.
+Phase 5 completed June 24, 2026.
+
+### v0.7 — Accelerated Renderer
+
+Phase 6 completed June 24, 2026.
 
 ### v1.0 — Scene-Capable Renderer
 

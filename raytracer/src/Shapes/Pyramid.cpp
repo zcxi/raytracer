@@ -130,3 +130,16 @@ bool Pyramid::intersect(const Ray& ray, double minDistance,
     hit.shape = this;
     return true;
 }
+
+bool Pyramid::boundingBox(Aabb& bounds) const {
+    const double halfWidth = baseWidth * 0.5;
+    const double halfDepth = baseDepth * 0.5;
+    bounds = Aabb(
+        Vec3(baseCenter.X() - halfWidth,
+             baseCenter.Y(),
+             baseCenter.Z() - halfDepth),
+        Vec3(baseCenter.X() + halfWidth,
+             baseCenter.Y() + height,
+             baseCenter.Z() + halfDepth));
+    return true;
+}

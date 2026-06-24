@@ -25,13 +25,15 @@ struct CommandLineOptions {
     ImageOutputSettings outputSettings;
     std::string environmentMap;
     double environmentIntensity;
+    bool accelerationEnabled;
 
     CommandLineOptions()
         : outputPath("output.ppm"),
           renderSettings(32, 8, 1, 0, 8, 4),
           outputSettings(0.0, ToneMapper::Aces),
           environmentMap(),
-          environmentIntensity(1.0) {
+          environmentIntensity(1.0),
+          accelerationEnabled(true) {
     }
 };
 
@@ -90,8 +92,10 @@ void printUsage() {
         << "  --threads N       Worker count; 0 uses hardware concurrency\n"
         << "  --bounces N       Maximum path depth (default: 8)\n"
         << "  --rr-start N      Russian roulette start bounce (default: 4)\n"
+        << "  --tile-size N     Square render tile size (default: 16)\n"
         << "  --env-map PATH    Lat-long P6 PPM environment map\n"
-        << "  --env-intensity N Environment multiplier (default: 1)\n";
+        << "  --env-intensity N Environment multiplier (default: 1)\n"
+        << "  --no-bvh          Disable BVH for diagnostics/benchmarking\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -106,6 +110,10 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
         if (argument == "--help") {
             printUsage();
             std::exit(0);
+        }
+        if (argument == "--no-bvh") {
+            options.accelerationEnabled = false;
+            continue;
         }
         if (index >= argc) {
             throw std::invalid_argument(
@@ -137,6 +145,9 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
         } else if (argument == "--rr-start") {
             options.renderSettings.russianRouletteStart =
                 parseUnsigned(value, argument);
+        } else if (argument == "--tile-size") {
+            options.renderSettings.tileSize =
+                parseUnsigned(value, argument);
         } else if (argument == "--env-map") {
             options.environmentMap = value;
         } else if (argument == "--env-intensity") {
@@ -156,6 +167,9 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
     if (options.renderSettings.maxBounces == 0) {
         throw std::invalid_argument("Maximum bounces must be positive.");
     }
+    if (options.renderSettings.tileSize == 0) {
+        throw std::invalid_argument("Tile size must be positive.");
+    }
     return options;
 }
 
@@ -174,6 +188,7 @@ void demo1(const CommandLineOptions& options) {
             options.environmentMap + ".");
     }
     scene.setEnvironment(environment);
+    scene.setAccelerationEnabled(options.accelerationEnabled);
 
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(-7, 7, -58), 4.0,

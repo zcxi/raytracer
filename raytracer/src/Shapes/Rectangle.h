@@ -14,6 +14,7 @@ public:
     bool sampleSurface(
         Sampler& sampler, SurfaceSample& sample) const override;
     double surfaceArea() const override { return width * height; }
+    bool boundingBox(Aabb& bounds) const override;
 
 private:
     Vec3 center;
@@ -25,4 +26,3 @@ private:
 };
 
 #endif
-

@@ -21,6 +21,7 @@ class Sphere: public Shape {
         bool sampleSurface(
             Sampler& sampler, SurfaceSample& sample) const override;
         double surfaceArea() const override;
+        bool boundingBox(Aabb& bounds) const override;
 
         double getRadius() const {return radius;}
         const Vec3& getCenter() const {return center;}

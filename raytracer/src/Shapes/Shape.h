@@ -10,6 +10,7 @@
 #include "../Materials/Material.h"
 #include "HitRecord.h"
 #include "SurfaceSample.h"
+#include "../Acceleration/Aabb.h"
 
 class Sampler;
 
@@ -33,6 +34,10 @@ class Shape {
             return false;
         }
         virtual double surfaceArea() const { return 0.0; }
+        virtual bool boundingBox(Aabb& bounds) const {
+            (void)bounds;
+            return false;
+        }
 
         const Material& getMaterial() const { return material; }
         const Vec3& getSurfaceColor() const { return material.albedo; }

@@ -20,19 +20,22 @@ struct RenderSettings {
     unsigned int workerCount;
     unsigned int maxBounces;
     unsigned int russianRouletteStart;
+    unsigned int tileSize;
 
     RenderSettings(unsigned int samplesPerPixel = 1,
                    unsigned int previewInterval = 0,
                    std::uint64_t randomSeed = 1,
                    unsigned int workerCount = 0,
                    unsigned int maxBounces = 8,
-                   unsigned int russianRouletteStart = 4)
+                   unsigned int russianRouletteStart = 4,
+                   unsigned int tileSize = 16)
         : samplesPerPixel(samplesPerPixel),
           previewInterval(previewInterval),
           randomSeed(randomSeed),
           workerCount(workerCount),
           maxBounces(maxBounces),
-          russianRouletteStart(russianRouletteStart) {
+          russianRouletteStart(russianRouletteStart),
+          tileSize(tileSize) {
     }
 };
 
@@ -51,7 +54,7 @@ class Renderer {
 
 
     private:
-        void renderPass(unsigned int sampleIndex);
+        double renderPass(unsigned int sampleIndex);
         std::vector<std::vector<Vec3>> averagedFrame(
             unsigned int completedSamples) const;
 

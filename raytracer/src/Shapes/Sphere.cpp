@@ -75,3 +75,9 @@ double Sphere::surfaceArea() const {
     const double pi = 3.14159265358979323846;
     return 4.0 * pi * radiusSquared;
 }
+
+bool Sphere::boundingBox(Aabb& bounds) const {
+    const Vec3 extent(radius, radius, radius);
+    bounds = Aabb(center - extent, center + extent);
+    return true;
+}

@@ -11,16 +11,37 @@
 constexpr double Scene::RAY_EPSILON;
 
 Scene::Scene(const Vec3& background)
-    : environment(background, background), emissiveShapes() {
+    : environment(background, background),
+      boundedShapes(),
+      unboundedShapes(),
+      emissiveShapes(),
+      bvh(),
+      accelerationEnabled(true) {
 }
 
 bool Scene::findClosestHit(const Ray& ray, double minDistance,
                            double maxDistance, HitRecord& closestHit) const {
     bool foundHit = false;
-    double closestDistance = maxDistance;
+    if (accelerationEnabled) {
+        foundHit =
+            bvh.intersect(ray, minDistance, maxDistance, closestHit);
+    } else {
+        HitRecord candidate;
+        double closest = maxDistance;
+        for (const Shape* shape : boundedShapes) {
+            if (shape->intersect(
+                    ray, minDistance, closest, candidate)) {
+                closest = candidate.distance;
+                closestHit = candidate;
+                foundHit = true;
+            }
+        }
+    }
+    double closestDistance =
+        foundHit ? closestHit.distance : maxDistance;
     HitRecord candidate;
 
-    for (const auto& object : shapes) {
+    for (const Shape* object : unboundedShapes) {
         if (object->intersect(ray, minDistance, closestDistance, candidate)) {
             foundHit = true;
             closestDistance = candidate.distance;
@@ -31,8 +52,22 @@ bool Scene::findClosestHit(const Ray& ray, double minDistance,
 }
 
 bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
+    if (accelerationEnabled) {
+        if (bvh.occluded(ray, RAY_EPSILON, maxDistance)) {
+            return true;
+        }
+    } else {
+        HitRecord hit;
+        for (const Shape* shape : boundedShapes) {
+            if (shape->getMaterial().transmission <= 0.0 &&
+                shape->intersect(
+                    ray, RAY_EPSILON, maxDistance, hit)) {
+                return true;
+            }
+        }
+    }
     HitRecord ignored;
-    for (const auto& object : shapes) {
+    for (const Shape* object : unboundedShapes) {
         if (object->intersect(ray, RAY_EPSILON, maxDistance, ignored)) {
             if (object->getMaterial().transmission <= 0.0) {
                 return true;
@@ -314,11 +349,18 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
 
 void Scene::addShape(std::unique_ptr<Shape> shape) {
     if (shape) {
+        Aabb bounds;
+        if (shape->boundingBox(bounds)) {
+            boundedShapes.push_back(shape.get());
+        } else {
+            unboundedShapes.push_back(shape.get());
+        }
         if (!shape->getMaterial().emission.near(Vec3()) &&
             shape->surfaceArea() > Vec3::EPSILON) {
             emissiveShapes.push_back(shape.get());
         }
         shapes.push_back(std::move(shape));
+        bvh.build(boundedShapes);
     }
 }
 

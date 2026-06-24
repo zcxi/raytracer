@@ -12,6 +12,7 @@
 #include "../Math/Ray.h"
 #include "../Math/Sampler.h"
 #include "../Materials/Bsdf.h"
+#include "../Acceleration/Bvh.h"
 #include <memory>
 
 struct PathTraceSettings {
@@ -41,6 +42,13 @@ class Scene {
         void addShape(std::unique_ptr<Shape> shape);
         void addLight(std::unique_ptr<LightSource> source);
         void setEnvironment(const Environment& environment);
+        void setAccelerationEnabled(bool enabled) {
+            accelerationEnabled = enabled;
+        }
+        std::size_t bvhNodeCount() const { return bvh.nodeCount(); }
+        std::size_t boundedShapeCount() const {
+            return boundedShapes.size();
+        }
 
         static Vec3 reflect(const Vec3& direction, const Vec3& normal);
         static Vec3 refract(const Vec3& direction, const Vec3& normal,
@@ -64,8 +72,12 @@ class Scene {
         std::size_t sampledLightCount() const;
         Environment environment;
         std::vector<std::unique_ptr<Shape>> shapes;
+        std::vector<const Shape*> boundedShapes;
+        std::vector<const Shape*> unboundedShapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;
         std::vector<const Shape*> emissiveShapes;
+        Bvh bvh;
+        bool accelerationEnabled;
 };
 
 

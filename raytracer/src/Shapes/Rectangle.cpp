@@ -61,3 +61,13 @@ bool Rectangle::sampleSurface(
     return true;
 }
 
+bool Rectangle::boundingBox(Aabb& bounds) const {
+    const Vec3 horizontal = right * (width * 0.5);
+    const Vec3 vertical = up * (height * 0.5);
+    const Vec3 extent(
+        std::abs(horizontal.X()) + std::abs(vertical.X()) + 1e-5,
+        std::abs(horizontal.Y()) + std::abs(vertical.Y()) + 1e-5,
+        std::abs(horizontal.Z()) + std::abs(vertical.Z()) + 1e-5);
+    bounds = Aabb(center - extent, center + extent);
+    return true;
+}
