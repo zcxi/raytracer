@@ -21,7 +21,8 @@ Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
       stopping(false),
       workGeneration(0),
       activeWorkers(0),
-      currentSample(0),
+      currentFirstSample(0),
+      currentSampleCount(0),
       tilesX(0),
       tileCount(0) {
     if (settings.samplesPerPixel == 0) {
@@ -47,12 +48,14 @@ double Renderer::sampleOffset(std::size_t pixelIndex,
         pixelIndex, sampleIndex, seed, dimension);
 }
 
-double Renderer::renderPass(unsigned int sampleIndex) {
+double Renderer::renderPass(
+        unsigned int firstSample, unsigned int sampleCount) {
     const std::chrono::steady_clock::time_point start =
         std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> lock(workMutex);
-        currentSample = sampleIndex;
+        currentFirstSample = firstSample;
+        currentSampleCount = sampleCount;
         nextTile.store(0);
         activeWorkers = static_cast<unsigned int>(workers.size());
         ++workGeneration;
@@ -70,11 +73,13 @@ double Renderer::renderPass(unsigned int sampleIndex) {
     return elapsed.count();
 }
 
-void Renderer::renderTiles(unsigned int sampleIndex, TraceStats& stats) {
+void Renderer::renderTiles(
+        unsigned int firstSample, unsigned int sampleCount,
+        TraceStats* stats) {
     const int height = camera.getImageHeight();
     const int width = camera.getImageWidth();
     const unsigned int tileSize = settings.tileSize;
-    TraceStatsScope statsScope(&stats);
+    TraceStatsScope statsScope(stats);
     while (true) {
         const std::size_t tileIndex = nextTile.fetch_add(1);
         if (tileIndex >= tileCount) {
@@ -94,19 +99,24 @@ void Renderer::renderTiles(unsigned int sampleIndex, TraceStats& stats) {
             for (int column = startX; column < endX; ++column) {
                 const std::size_t index =
                     static_cast<std::size_t>(row) * width + column;
-                Sampler sampler(
-                    index, sampleIndex, settings.randomSeed);
-                const double offsetX = sampler.next();
-                const double offsetY = sampler.next();
-                const Ray ray = camera.makeRay(
-                    column + offsetX, row + offsetY, sampler);
-                accumulationBuffer[row][column] =
-                    accumulationBuffer[row][column] +
-                    scene.trace(
+                Vec3 accumulated = accumulationBuffer[row][column];
+                for (unsigned int offset = 0;
+                     offset < sampleCount; ++offset) {
+                    const unsigned int sampleIndex =
+                        firstSample + offset;
+                    Sampler sampler(
+                        index, sampleIndex, settings.randomSeed);
+                    const double offsetX = sampler.next();
+                    const double offsetY = sampler.next();
+                    const Ray ray = camera.makeRay(
+                        column + offsetX, row + offsetY, sampler);
+                    accumulated = accumulated + scene.trace(
                         ray, sampler,
                         PathTraceSettings(
                             settings.maxBounces,
                             settings.russianRouletteStart));
+                }
+                accumulationBuffer[row][column] = accumulated;
             }
         }
     }
@@ -115,7 +125,8 @@ void Renderer::renderTiles(unsigned int sampleIndex, TraceStats& stats) {
 void Renderer::workerLoop(unsigned int workerIndex) {
     std::size_t observedGeneration = 0;
     while (true) {
-        unsigned int sampleIndex = 0;
+        unsigned int firstSample = 0;
+        unsigned int sampleCount = 0;
         {
             std::unique_lock<std::mutex> lock(workMutex);
             workAvailable.wait(lock, [this, observedGeneration]() {
@@ -125,9 +136,12 @@ void Renderer::workerLoop(unsigned int workerIndex) {
                 return;
             }
             observedGeneration = workGeneration;
-            sampleIndex = currentSample;
+            firstSample = currentFirstSample;
+            sampleCount = currentSampleCount;
         }
-        renderTiles(sampleIndex, workerStats[workerIndex]);
+        renderTiles(
+            firstSample, sampleCount,
+            settings.collectStats ? &workerStats[workerIndex] : nullptr);
         {
             std::lock_guard<std::mutex> lock(workMutex);
             --activeWorkers;
@@ -203,10 +217,17 @@ void Renderer::render() {
     startWorkers();
 
     try {
-        for (unsigned int sample = 0;
-             sample < settings.samplesPerPixel; ++sample) {
-            const double passSeconds = renderPass(sample);
-            const unsigned int completedSamples = sample + 1;
+        unsigned int completedSamples = 0;
+        while (completedSamples < settings.samplesPerPixel) {
+            const unsigned int remaining =
+                settings.samplesPerPixel - completedSamples;
+            const unsigned int batchSize =
+                settings.previewInterval == 0
+                    ? remaining
+                    : std::min(settings.previewInterval, remaining);
+            const double passSeconds =
+                renderPass(completedSamples, batchSize);
+            completedSamples += batchSize;
             const bool finalPass =
                 completedSamples == settings.samplesPerPixel;
             const bool previewPass =
@@ -235,7 +256,6 @@ void Renderer::render() {
     const double primarySamples =
         static_cast<double>(width) * height *
         settings.samplesPerPixel;
-    const TraceStats stats = combinedStats();
     std::cout << "Render time: " << std::fixed
               << std::setprecision(3) << elapsed.count()
               << " s; primary samples: "
@@ -243,12 +263,16 @@ void Renderer::render() {
               << "; throughput: " << std::setprecision(2)
               << primarySamples / std::max(0.001, elapsed.count()) / 1e6
               << " M samples/s; BVH nodes: "
-              << scene.bvhNodeCount()
-              << "; rays: " << stats.rays
-              << "; shadow rays: " << stats.shadowRays
-              << "; AABB tests: " << stats.aabbTests
-              << "; primitive tests: " << stats.primitiveTests
-              << "; BVH node visits: " << stats.bvhNodeVisits
-              << "; average path depth: " << std::setprecision(2)
-              << stats.averagePathDepth() << "." << std::endl;
+              << scene.bvhNodeCount();
+    if (settings.collectStats) {
+        const TraceStats stats = combinedStats();
+        std::cout << "; rays: " << stats.rays
+                  << "; shadow rays: " << stats.shadowRays
+                  << "; AABB tests: " << stats.aabbTests
+                  << "; primitive tests: " << stats.primitiveTests
+                  << "; BVH node visits: " << stats.bvhNodeVisits
+                  << "; average path depth: " << std::setprecision(2)
+                  << stats.averagePathDepth();
+    }
+    std::cout << "." << std::endl;
 }

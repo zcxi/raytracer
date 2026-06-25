@@ -25,6 +25,7 @@ struct RenderSettings {
     unsigned int maxBounces;
     unsigned int russianRouletteStart;
     unsigned int tileSize;
+    bool collectStats;
 
     RenderSettings(unsigned int samplesPerPixel = 1,
                    unsigned int previewInterval = 0,
@@ -32,14 +33,16 @@ struct RenderSettings {
                    unsigned int workerCount = 0,
                    unsigned int maxBounces = 8,
                    unsigned int russianRouletteStart = 4,
-                   unsigned int tileSize = 16)
+                   unsigned int tileSize = 16,
+                   bool collectStats = false)
         : samplesPerPixel(samplesPerPixel),
           previewInterval(previewInterval),
           randomSeed(randomSeed),
           workerCount(workerCount),
           maxBounces(maxBounces),
           russianRouletteStart(russianRouletteStart),
-          tileSize(tileSize) {
+          tileSize(tileSize),
+          collectStats(collectStats) {
     }
 };
 
@@ -59,11 +62,14 @@ class Renderer {
 
 
     private:
-        double renderPass(unsigned int sampleIndex);
+        double renderPass(
+            unsigned int firstSample, unsigned int sampleCount);
         void startWorkers();
         void stopWorkers();
         void workerLoop(unsigned int workerIndex);
-        void renderTiles(unsigned int sampleIndex, TraceStats& stats);
+        void renderTiles(
+            unsigned int firstSample, unsigned int sampleCount,
+            TraceStats* stats);
         TraceStats combinedStats() const;
 
         ImageWriter& imageWriter;
@@ -80,7 +86,8 @@ class Renderer {
         bool stopping;
         std::size_t workGeneration;
         unsigned int activeWorkers;
-        unsigned int currentSample;
+        unsigned int currentFirstSample;
+        unsigned int currentSampleCount;
         unsigned int tilesX;
         std::size_t tileCount;
 };

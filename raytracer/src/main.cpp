@@ -130,6 +130,7 @@ void printUsage() {
         << "  --env-map PATH    Lat-long P6 PPM environment map\n"
         << "  --env-intensity N Environment multiplier (default: 1)\n"
         << "  --no-bvh          Disable BVH for diagnostics/benchmarking\n"
+        << "  --stats           Collect detailed tracing counters\n"
         << "  --aperture N      Lens aperture diameter (default: 0.35)\n"
         << "  --focus N         Focus distance (default: 58)\n"
         << "  --shutter-open N  Shutter start time (default: 0)\n"
@@ -155,6 +156,10 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
         }
         if (argument == "--no-bvh") {
             options.accelerationEnabled = false;
+            continue;
+        }
+        if (argument == "--stats") {
+            options.renderSettings.collectStats = true;
             continue;
         }
         if (index >= argc) {
@@ -342,11 +347,11 @@ void demo1(const CommandLineOptions& options) {
 void chessboard(const CommandLineOptions& options) {
     const double pi = 3.14159265358979323846;
     const double boardZ = -18.0;
-    const double boardY = 1.51;
+    const double boardTop = 0.42;
     Scene scene;
     Environment environment(
-        Vec3(0.06, 0.05, 0.06),
-        Vec3(0.18, 0.22, 0.35),
+        Vec3(0.035, 0.025, 0.02),
+        Vec3(0.16, 0.20, 0.32),
         options.environmentIntensity);
     if (!options.environmentMap.empty() &&
         !environment.loadPpm(
@@ -358,131 +363,255 @@ void chessboard(const CommandLineOptions& options) {
     scene.setEnvironment(environment);
     scene.setAccelerationEnabled(options.accelerationEnabled);
 
-    const Vec3 woodColor(0.25, 0.15, 0.08);
+    const Material boardWood = Material::principled(
+        Vec3(0.25, 0.095, 0.035), 0.42, 0.0, 0.0);
+    const Material darkWood = Material::principled(
+        Vec3(0.09, 0.025, 0.012), 0.5, 0.0, 0.0);
+    const Material lightSquare = Material::principled(
+        Vec3(0.78, 0.58, 0.31), 0.5, 0.0, 0.0);
+    const Material darkSquare = Material::principled(
+        Vec3(0.19, 0.055, 0.025), 0.46, 0.0, 0.0);
+
+    // Solid board, inset playing squares, and raised frame.
     scene.addShape(std::unique_ptr<Shape>(
         new RectangularPrism(
-            Vec3(0, 0.0, boardZ), Vec3(4.6, 1.5, 4.6),
-            Material::principled(woodColor, 0.55, 0.0, 0.0))));
-    const Vec3 legColor(0.18, 0.10, 0.05);
-    auto leg = [&](double lx, double lz) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(lx, -2.5, lz), Vec3(0.3, 1.0, 0.3),
-                Material::principled(legColor, 0.6, 0.0, 0.0))));
-    };
-    leg(-3.8, boardZ - 3.8);
-    leg( 3.8, boardZ - 3.8);
-    leg(-3.8, boardZ + 3.8);
-    leg( 3.8, boardZ + 3.8);
-
-    const std::shared_ptr<Texture> checker(
-        new CheckerTexture(
-            Vec3(0.96, 0.94, 0.88),
-            Vec3(0.06, 0.06, 0.10), pi * 0.5));
-
+            Vec3(0, 0.0, boardZ), Vec3(9.4, 0.75, 9.4),
+            boardWood)));
     scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 1, 0), Vec3(0, boardY, boardZ),
-                  Material::diffuse(Vec3(0.5, 0.5, 0.5))
-                      .withTexture(checker))));
-
-    const double py = boardY;
-    const Vec3 whitePc(0.96, 0.94, 0.88);
-    const Vec3 blackPc(0.06, 0.06, 0.10);
-    auto pieceMat = [](const Vec3& c, double rough = 0.25) {
-        return Material::principled(c, rough, 0.0, 0.0);
-    };
-
-    auto pawn = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, py + 0.35, z), 0.22, pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 0.12, z), Vec3(0.16, 0.12, 0.16),
-                pieceMat(col, 0.4))));
-    };
-    auto rook = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 0.5, z), Vec3(0.20, 0.5, 0.20),
-                pieceMat(col))));
-    };
-    auto knight = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x + 0.08, py + 0.42, z), Vec3(0.22, 0.42, 0.16),
-                pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x + 0.15, py + 0.68, z), 0.16,
-                       pieceMat(col))));
-    };
-    auto bishop = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 0.48, z), Vec3(0.18, 0.48, 0.18),
-                pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, py + 0.80, z), 0.17, pieceMat(col))));
-    };
-    auto queen = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 0.55, z), Vec3(0.22, 0.55, 0.22),
-                pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, py + 0.90, z), 0.20, pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, py + 1.15, z), 0.10, pieceMat(col))));
-    };
-    auto king = [&](double x, double z, const Vec3& col) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 0.58, z), Vec3(0.22, 0.58, 0.22),
-                pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, py + 0.93, z), 0.18, pieceMat(col))));
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, py + 1.12, z), Vec3(0.06, 0.10, 0.22),
-                pieceMat(col, 0.3))));
-    };
-
-    auto placeBackRow = [&](double z, const Vec3& col) {
-        rook(-3.5, z, col);
-        knight(-2.5, z, col);
-        bishop(-1.5, z, col);
-        queen(-0.5, z, col);
-        king(0.5, z, col);
-        bishop(1.5, z, col);
-        knight(2.5, z, col);
-        rook(3.5, z, col);
-    };
-    auto placePawns = [&](double z, const Vec3& col) {
-        for (int i = 0; i < 8; ++i)
-            pawn(-3.5 + i, z, col);
-    };
-
-    placeBackRow(boardZ - 3.5, blackPc);
-    placePawns(boardZ - 2.5, blackPc);
-    placePawns(boardZ + 2.5, whitePc);
-    placeBackRow(boardZ + 3.5, whitePc);
-
+        new RectangularPrism(
+            Vec3(0, -0.43, boardZ), Vec3(8.7, 0.14, 8.7),
+            darkWood)));
+    for (int rank = 0; rank < 8; ++rank) {
+        for (int file = 0; file < 8; ++file) {
+            const double x = static_cast<double>(file) - 3.5;
+            const double z = boardZ +
+                static_cast<double>(rank) - 3.5;
+            scene.addShape(std::unique_ptr<Shape>(
+                new RectangularPrism(
+                    Vec3(x, boardTop, z),
+                    Vec3(0.96, 0.08, 0.96),
+                    ((file + rank) % 2 == 0)
+                        ? lightSquare : darkSquare)));
+        }
+    }
+    const double frameY = boardTop + 0.07;
     scene.addShape(std::unique_ptr<Shape>(
-        new Rectangle(
-            Vec3(0, 9, boardZ + 2), Vec3(0, -1, 0),
-            Vec3(0, 0, -1), 8, 3,
-            Material::diffuse(
-                Vec3(0.0, 0.0, 0.0),
-                Vec3(14.0, 12.0, 9.0)))));
+        new RectangularPrism(
+            Vec3(0, frameY, boardZ - 4.18),
+            Vec3(9.25, 0.18, 0.30), darkWood)));
     scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 0, -1), Vec3(0, 0, boardZ + 8),
+        new RectangularPrism(
+            Vec3(0, frameY, boardZ + 4.18),
+            Vec3(9.25, 0.18, 0.30), darkWood)));
+    scene.addShape(std::unique_ptr<Shape>(
+        new RectangularPrism(
+            Vec3(-4.18, frameY, boardZ),
+            Vec3(0.30, 0.18, 8.65), darkWood)));
+    scene.addShape(std::unique_ptr<Shape>(
+        new RectangularPrism(
+            Vec3(4.18, frameY, boardZ),
+            Vec3(0.30, 0.18, 8.65), darkWood)));
+
+    // A compact display table grounds the board without hiding the pieces.
+    scene.addShape(std::unique_ptr<Shape>(
+        new RectangularPrism(
+            Vec3(0, -0.72, boardZ), Vec3(10.2, 0.22, 10.2),
+            darkWood)));
+    auto leg = [&](double x, double z) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, -2.7, z), Vec3(0.48, 3.8, 0.48),
+                darkWood)));
+    };
+    leg(-4.25, boardZ - 4.25);
+    leg(4.25, boardZ - 4.25);
+    leg(-4.25, boardZ + 4.25);
+    leg(4.25, boardZ + 4.25);
+
+    const double pieceY = boardTop + 0.08;
+    const Material whitePiece = Material::principled(
+        Vec3(0.92, 0.84, 0.66), 0.18, 0.0, 0.0);
+    const Material blackPiece = Material::principled(
+        Vec3(0.025, 0.018, 0.014), 0.13, 0.08, 0.0);
+
+    auto addPrism = [&](const Vec3& center, const Vec3& size,
+                        const Material& material) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(center, size, material)));
+    };
+    auto addSphere = [&](const Vec3& center, double radius,
+                         const Material& material) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(center, radius, material)));
+    };
+    auto addEllipsoid = [&](const Vec3& center, const Vec3& scale,
+                            const Material& material) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new Transform(
+                std::unique_ptr<Shape>(
+                    new Sphere(Vec3(), 1.0, material)),
+                center, Vec3(), scale)));
+    };
+    auto addBase = [&](double x, double z, const Material& material,
+                       double scale = 1.0) {
+        addEllipsoid(
+            Vec3(x, pieceY + 0.08 * scale, z),
+            Vec3(0.38 * scale, 0.10 * scale, 0.38 * scale),
+            material);
+        addPrism(
+            Vec3(x, pieceY + 0.18 * scale, z),
+            Vec3(0.42 * scale, 0.10 * scale, 0.42 * scale),
+            material);
+    };
+
+    auto pawn = [&](double x, double z, const Material& material) {
+        addBase(x, z, material, 0.82);
+        addPrism(
+            Vec3(x, pieceY + 0.37, z),
+            Vec3(0.20, 0.33, 0.20), material);
+        addEllipsoid(
+            Vec3(x, pieceY + 0.53, z),
+            Vec3(0.25, 0.12, 0.25), material);
+        addSphere(Vec3(x, pieceY + 0.70, z), 0.20, material);
+    };
+    auto rook = [&](double x, double z, const Material& material) {
+        addBase(x, z, material);
+        addPrism(
+            Vec3(x, pieceY + 0.48, z),
+            Vec3(0.33, 0.55, 0.33), material);
+        addPrism(
+            Vec3(x, pieceY + 0.78, z),
+            Vec3(0.58, 0.14, 0.58), material);
+        const double offset = 0.20;
+        for (int sx = -1; sx <= 1; sx += 2) {
+            for (int sz = -1; sz <= 1; sz += 2) {
+                addPrism(
+                    Vec3(x + sx * offset, pieceY + 0.91,
+                         z + sz * offset),
+                    Vec3(0.16, 0.18, 0.16), material);
+            }
+        }
+    };
+    auto knight = [&](double x, double z, const Material& material,
+                      double facing) {
+        addBase(x, z, material);
+        scene.addShape(std::unique_ptr<Shape>(
+            new Transform(
+                std::unique_ptr<Shape>(
+                    new RectangularPrism(
+                        Vec3(), Vec3(0.28, 0.72, 0.36), material)),
+                Vec3(x, pieceY + 0.56, z),
+                Vec3(facing * 0.32, 0.0, 0.0))));
+        addEllipsoid(
+            Vec3(x, pieceY + 0.91, z - facing * 0.14),
+            Vec3(0.25, 0.25, 0.34), material);
+        addPrism(
+            Vec3(x, pieceY + 0.98, z - facing * 0.35),
+            Vec3(0.24, 0.18, 0.30), material);
+        for (int side = -1; side <= 1; side += 2) {
+            scene.addShape(std::unique_ptr<Shape>(
+                new Pyramid(
+                    Vec3(x + side * 0.10, pieceY + 1.06,
+                         z - facing * 0.24),
+                    0.10, 0.10, 0.24, material)));
+        }
+    };
+    auto bishop = [&](double x, double z, const Material& material) {
+        addBase(x, z, material);
+        addPrism(
+            Vec3(x, pieceY + 0.52, z),
+            Vec3(0.24, 0.60, 0.24), material);
+        addEllipsoid(
+            Vec3(x, pieceY + 0.78, z),
+            Vec3(0.31, 0.16, 0.31), material);
+        addSphere(Vec3(x, pieceY + 0.96, z), 0.22, material);
+        scene.addShape(std::unique_ptr<Shape>(
+            new Pyramid(
+                Vec3(x, pieceY + 1.08, z),
+                0.20, 0.20, 0.34, material)));
+    };
+    auto queen = [&](double x, double z, const Material& material) {
+        addBase(x, z, material, 1.08);
+        addPrism(
+            Vec3(x, pieceY + 0.60, z),
+            Vec3(0.27, 0.70, 0.27), material);
+        addEllipsoid(
+            Vec3(x, pieceY + 0.91, z),
+            Vec3(0.36, 0.16, 0.36), material);
+        addSphere(Vec3(x, pieceY + 1.10, z), 0.20, material);
+        for (int point = 0; point < 4; ++point) {
+            const double angle = point * pi * 0.5;
+            addSphere(
+                Vec3(x + std::cos(angle) * 0.22,
+                     pieceY + 1.25,
+                     z + std::sin(angle) * 0.22),
+                0.095, material);
+        }
+        addSphere(Vec3(x, pieceY + 1.34, z), 0.10, material);
+    };
+    auto king = [&](double x, double z, const Material& material) {
+        addBase(x, z, material, 1.08);
+        addPrism(
+            Vec3(x, pieceY + 0.62, z),
+            Vec3(0.29, 0.75, 0.29), material);
+        addEllipsoid(
+            Vec3(x, pieceY + 0.96, z),
+            Vec3(0.35, 0.17, 0.35), material);
+        addSphere(Vec3(x, pieceY + 1.14, z), 0.18, material);
+        addPrism(
+            Vec3(x, pieceY + 1.39, z),
+            Vec3(0.10, 0.42, 0.10), material);
+        addPrism(
+            Vec3(x, pieceY + 1.44, z),
+            Vec3(0.34, 0.10, 0.10), material);
+    };
+
+    auto placeBackRow = [&](double z, const Material& material,
+                            double facing) {
+        rook(-3.5, z, material);
+        knight(-2.5, z, material, facing);
+        bishop(-1.5, z, material);
+        queen(-0.5, z, material);
+        king(0.5, z, material);
+        bishop(1.5, z, material);
+        knight(2.5, z, material, facing);
+        rook(3.5, z, material);
+    };
+    auto placePawns = [&](double z, const Material& material) {
+        for (int file = 0; file < 8; ++file) {
+            pawn(-3.5 + file, z, material);
+        }
+    };
+
+    placeBackRow(boardZ - 3.5, blackPiece, -1.0);
+    placePawns(boardZ - 2.5, blackPiece);
+    placePawns(boardZ + 2.5, whitePiece);
+    placeBackRow(boardZ + 3.5, whitePiece, 1.0);
+
+    // Invisible warm key and cool fill lights keep the full set readable.
+    scene.addLight(std::unique_ptr<LightSource>(
+        new PointSource(
+            Vec3(-5.5, 9.5, boardZ + 2.0),
+            Vec3(1.0, 0.78, 0.55), 8500.0)));
+    scene.addLight(std::unique_ptr<LightSource>(
+        new PointSource(
+            Vec3(8.5, 5.5, boardZ - 1.5),
+            Vec3(0.48, 0.65, 1.0), 4200.0)));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Plane(Vec3(0, 0, 1), Vec3(0, 0, boardZ - 7),
                   Material::principled(
-                      Vec3(0.55, 0.50, 0.45),
+                      Vec3(0.32, 0.27, 0.24),
                       0.88, 0.0, 0.0))));
+    scene.addShape(std::unique_ptr<Shape>(
+        new Plane(Vec3(0, 1, 0), Vec3(0, -4.62, boardZ),
+                  Material::principled(
+                      Vec3(0.12, 0.10, 0.09),
+                      0.9, 0.0, 0.0))));
 
     scene.finalize();
 
-    Vec3 camPos(8, 5, 3);
-    Vec3 camRot(-0.22, 0.22, 0.0);
+    Vec3 camPos(9.5, 7.2, 3.5);
+    Vec3 camRot(-0.29, -0.42, 0.0);
     if (options.camX >= 0) {
         camPos = Vec3(options.camX, options.camY, options.camZ);
     }
@@ -493,9 +622,11 @@ void chessboard(const CommandLineOptions& options) {
     if (options.fov > 0) {
         fov = options.fov;
     }
+    const double chessFocus =
+        options.focusDistance == 58.0 ? 24.0 : options.focusDistance;
     Camera camera(camPos, camRot,
                   800, 600, fov,
-                  options.aperture, options.focusDistance,
+                  options.aperture, chessFocus,
                   options.shutterOpen, options.shutterClose);
     ImageWriter imageWriter(options.outputPath, options.outputSettings);
     Renderer render(

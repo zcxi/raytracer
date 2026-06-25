@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
-
+#include <limits>
 namespace {
 
 double component(const Vec3& vector, int axis) {
@@ -19,36 +19,71 @@ Aabb::Aabb(const Vec3& minimum, const Vec3& maximum)
     : minimum(minimum), maximum(maximum) {
 }
 
+Aabb::RayData::RayData(const Ray& ray)
+    : origin{{ray.origin().X(), ray.origin().Y(), ray.origin().Z()}},
+      inverseDirection(),
+      negative(),
+      parallel() {
+    const double direction[3] = {
+        ray.direction().X(), ray.direction().Y(), ray.direction().Z()
+    };
+    for (int axis = 0; axis < 3; ++axis) {
+        parallel[axis] = std::abs(direction[axis]) <= Vec3::EPSILON;
+        inverseDirection[axis] = parallel[axis]
+            ? std::numeric_limits<double>::infinity()
+            : 1.0 / direction[axis];
+        negative[axis] = inverseDirection[axis] < 0.0;
+    }
+}
+
 bool Aabb::intersect(const Ray& ray, double minDistance,
-                     double maxDistance) const {
-    TraceStats* stats = currentTraceStats();
+                     double maxDistance, double* nearDistance,
+                     TraceStats* stats) const {
+    return intersect(
+        RayData(ray), minDistance, maxDistance, nearDistance, stats);
+}
+
+bool Aabb::intersect(const RayData& ray, double minDistance,
+                     double maxDistance, double* nearDistance,
+                     TraceStats* stats) const {
     if (stats) {
         ++stats->aabbTests;
     }
     for (int axis = 0; axis < 3; ++axis) {
-        const double direction = component(ray.direction(), axis);
-        const double origin = component(ray.origin(), axis);
+        const double origin = ray.origin[axis];
         const double slabMinimum = component(minimum, axis);
         const double slabMaximum = component(maximum, axis);
-        if (std::abs(direction) <= Vec3::EPSILON) {
+        if (ray.parallel[axis]) {
             if (origin < slabMinimum || origin > slabMaximum) {
                 return false;
             }
             continue;
         }
-        const double inverse = 1.0 / direction;
-        double nearDistance = (slabMinimum - origin) * inverse;
-        double farDistance = (slabMaximum - origin) * inverse;
-        if (nearDistance > farDistance) {
-            std::swap(nearDistance, farDistance);
-        }
-        minDistance = std::max(minDistance, nearDistance);
-        maxDistance = std::min(maxDistance, farDistance);
+        const double inverse = ray.inverseDirection[axis];
+        const double nearSlab = ray.negative[axis]
+            ? slabMaximum : slabMinimum;
+        const double farSlab = ray.negative[axis]
+            ? slabMinimum : slabMaximum;
+        minDistance = std::max(
+            minDistance, (nearSlab - origin) * inverse);
+        maxDistance = std::min(
+            maxDistance, (farSlab - origin) * inverse);
         if (maxDistance < minDistance) {
             return false;
         }
     }
+    if (nearDistance) {
+        *nearDistance = minDistance;
+    }
     return true;
+}
+
+double Aabb::surfaceArea() const {
+    const Vec3 extent = maximum - minimum;
+    return 2.0 * (
+        extent.X() * extent.Y() +
+        extent.X() * extent.Z() +
+        extent.Y() * extent.Z());
 }
 
 Aabb Aabb::surrounding(const Aabb& first, const Aabb& second) {

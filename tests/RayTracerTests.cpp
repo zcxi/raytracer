@@ -96,6 +96,16 @@ std::vector<unsigned char> readBytes(const std::string& path) {
 }
 
 void testPerformanceQuickWins() {
+    expect(!RenderSettings().collectStats,
+           "Detailed tracing counters are disabled by default.");
+    expect(RenderSettings(1, 0, 1, 1, 1, 1, 16, true).collectStats,
+           "Tracing counters can be enabled explicitly.");
+
+    const Aabb areaBox(
+        Vec3(-1.0, -2.0, -3.0), Vec3(1.0, 2.0, 3.0));
+    expectNear(areaBox.surfaceArea(), 88.0, 1e-9,
+               "AABB surface area supports SAH construction.");
+
     Scene scene;
     scene.addShape(std::unique_ptr<Shape>(
         new Sphere(
@@ -181,6 +191,25 @@ void testPerformanceQuickWins() {
            "Direct accumulation output is byte-identical to averaged output.");
     std::remove(averagedPath.c_str());
     std::remove(accumulationPath.c_str());
+
+    const std::string batchedPath = "test-batched-render.ppm";
+    const std::string passPath = "test-pass-render.ppm";
+    Scene renderScene(Vec3(0.2, 0.3, 0.4));
+    Camera renderCamera(Vec3(), Vec3(), 4, 4, PI * 0.5);
+    ImageWriter batchedWriter(batchedPath);
+    ImageWriter passWriter(passPath);
+    Renderer batchedRenderer(
+        batchedWriter, renderScene, renderCamera,
+        RenderSettings(4, 0, 9, 2, 2, 2, 2));
+    Renderer passRenderer(
+        passWriter, renderScene, renderCamera,
+        RenderSettings(4, 1, 9, 2, 2, 2, 2));
+    batchedRenderer.render();
+    passRenderer.render();
+    expect(readBytes(batchedPath) == readBytes(passPath),
+           "Tile sample batching preserves deterministic accumulation.");
+    std::remove(batchedPath.c_str());
+    std::remove(passPath.c_str());
 }
 
 void testQuaternionRotation() {

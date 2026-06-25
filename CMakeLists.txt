@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(raytracer VERSION 1.1.0 LANGUAGES CXX)
+project(raytracer VERSION 1.2.0 LANGUAGES CXX)
 
 option(RAYTRACER_ENABLE_SANITIZERS
        "Enable address and undefined-behavior sanitizers" OFF)
@@ -56,6 +56,8 @@ add_executable(raytracer_benchmark benchmarks/PerformanceBenchmark.cpp)
 target_link_libraries(raytracer_benchmark PRIVATE raytracer_lib)
 
 option(RAYTRACER_OPTIMIZE_NATIVE "Enable -march=native optimization" ON)
+option(RAYTRACER_FAST_MATH
+       "Enable relaxed floating-point optimizations" ON)
 
 foreach(target raytracer_lib raytracer raytracer_tests raytracer_benchmark)
     if(MSVC)
@@ -63,10 +65,20 @@ foreach(target raytracer_lib raytracer raytracer_tests raytracer_benchmark)
         if(RAYTRACER_OPTIMIZE_NATIVE)
             target_compile_options(${target} PRIVATE /O2 /arch:AVX2)
         endif()
+        if(RAYTRACER_FAST_MATH AND NOT RAYTRACER_ENABLE_SANITIZERS)
+            target_compile_options(
+                ${target} PRIVATE $<$<CONFIG:Release>:/fp:fast>)
+        endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
         if(RAYTRACER_OPTIMIZE_NATIVE)
             target_compile_options(${target} PRIVATE -march=native -O3)
+        endif()
+        if(RAYTRACER_FAST_MATH AND NOT RAYTRACER_ENABLE_SANITIZERS)
+            target_compile_options(
+                ${target} PRIVATE
+                $<$<CONFIG:Release>:-ffast-math>
+                $<$<CONFIG:Release>:-fno-math-errno>)
         endif()
     endif()
 endforeach()

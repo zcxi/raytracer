@@ -1,12 +1,12 @@
 # raytracer
 
-A small C++11 path tracer. Version 1.1 adds allocation-free vector math,
-one-time scene BVH construction, mesh-local acceleration, persistent render
-workers, zero-copy progressive output, and reproducible tracing statistics.
+A small C++26 path tracer. Version 1.2 adds sample-batched tiles, binned SAH
+BVH construction, near-first traversal, cached BVH ray data, opt-in tracing
+statistics, and relaxed Release floating-point optimization.
 
 ## Building
 
-The project uses CMake 3.16 or newer and a C++11 compiler.
+The project uses CMake 3.25 or newer and a C++26 compiler.
 
 ```sh
 cmake -S . -B build
@@ -20,6 +20,13 @@ Run the demo renderer with an optional output path and image-quality settings:
 ./build/raytracer output.ppm --samples 128 --bounces 8 \
   --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1 \
   --env-map studio.ppm --env-intensity 1.5 --tile-size 16
+```
+
+Render the complete framed chessboard scene with all 32 pieces:
+
+```sh
+./build/raytracer chess.png --scene chessboard --samples 128 \
+  --bounces 6 --aperture 0.08 --exposure 0.3
 ```
 
 Lens and shutter controls are available through `--aperture`, `--focus`,
@@ -41,8 +48,14 @@ maps.
 
 Finite geometry is automatically placed in a BVH; infinite planes are tested
 separately. Use `--no-bvh` to compare against brute-force traversal. Each render
-reports total time, throughput, BVH size, rays, shadow rays, AABB and primitive
-tests, BVH node visits, and average path depth.
+reports total time, throughput, and BVH size. Add `--stats` when detailed rays,
+shadow rays, AABB tests, primitive tests, node visits, and path depth are needed.
+Keeping counters off avoids instrumentation in normal renders.
+
+When previews are disabled, all samples for a tile are rendered together for
+better cache locality and fewer worker barriers. Release builds use relaxed
+floating-point optimization by default; configure with
+`-DRAYTRACER_FAST_MATH=OFF` for strict IEEE behavior.
 
 Build and run the reproducible mesh benchmark with:
 
@@ -51,7 +64,7 @@ cmake --build build-release
 ./build-release/raytracer_benchmark
 ```
 
-See [BENCHMARKS.md](BENCHMARKS.md) for the v1.0 baseline, v1.1 results, and
+See [BENCHMARKS.md](BENCHMARKS.md) for the v1.0 through v1.2 results and
 commands used.
 
 On multi-configuration generators such as Visual Studio, add

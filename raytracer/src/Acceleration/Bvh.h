@@ -17,6 +17,12 @@ public:
     bool empty() const { return nodes.empty(); }
 
 private:
+    struct Primitive {
+        const Shape* shape;
+        Aabb bounds;
+        Vec3 centroid;
+    };
+
     struct Node {
         Aabb bounds;
         int left;
@@ -30,9 +36,10 @@ private:
 
     int buildNode(std::size_t start, std::size_t end);
     Aabb rangeBounds(std::size_t start, std::size_t end) const;
+    std::size_t chooseSplit(
+        std::size_t start, std::size_t end, const Aabb& bounds);
 
-    std::vector<const Shape*> orderedShapes;
-    std::vector<Aabb> shapeBounds;
+    std::vector<Primitive> primitives;
     std::vector<Node> nodes;
 };
 

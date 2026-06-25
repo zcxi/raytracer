@@ -313,6 +313,42 @@ before/after benchmarks.
 - Added a reproducible benchmark executable and recorded standard-scene and
   mesh-heavy results in `BENCHMARKS.md`.
 
+## Phase 8.1: Relaxed Performance Tuning
+
+**Status: completed for v1.2 on June 25, 2026.**
+
+This follow-up removes byte-identical output as a hard optimization constraint.
+Changes must still preserve valid intersections and stable visual output, but
+small floating-point differences are acceptable when they improve throughput.
+
+### Delivered in v1.2
+
+- Made detailed tracing counters opt-in through `--stats`, removing their
+  instrumentation cost from normal renders.
+- Batched all samples for each tile when previews are disabled, reducing worker
+  synchronization and improving accumulation-buffer locality.
+- Added optional Release fast-math optimization, enabled by default and
+  configurable with `RAYTRACER_FAST_MATH`.
+- Normalized rays with one square root instead of calculating their length
+  twice.
+- Cached ray origins, reciprocal directions, signs, and parallel-axis state once
+  per BVH query without increasing the size of every path ray.
+- Replaced median-only BVH construction with 12-bin surface-area-heuristic
+  splitting and cached primitive bounds.
+- Traversed nearer BVH children first and skipped queued nodes beyond the
+  closest known hit.
+- Added regression coverage for SAH surface-area calculations, opt-in counters,
+  and batched-versus-progressive accumulation.
+- Benchmarked the new renderer against commit `0de5ca6`; see `BENCHMARKS.md`.
+
+### Acceptance criteria
+
+- Debug and Release correctness tests pass.
+- BVH and brute-force intersections agree within numerical tolerance.
+- Reference renders contain no NaNs, missing geometry, or visible regressions.
+- Performance is measured with counters disabled.
+- Standard-scene and mesh-heavy benchmarks improve over the v1.1 baseline.
+
 ### Phase 9: Quality of life improvements
 
 - Add a table to set objects on
@@ -352,3 +388,7 @@ Completed June 24, 2026.
 ### v1.1 — Performance Quick Wins
 
 Completed June 24, 2026.
+
+### v1.2 — Relaxed Performance Tuning
+
+Completed June 25, 2026.
