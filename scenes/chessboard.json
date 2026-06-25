@@ -38,45 +38,33 @@
     "board-wood": {
       "type": "principled",
       "baseColor": [0.25, 0.095, 0.035],
-      "roughness": 0.42,
-      "clearcoat": 0.35,
-      "clearcoatRoughness": 0.16
+      "roughness": 0.42
     },
     "dark-wood": {
       "type": "principled",
       "baseColor": [0.09, 0.025, 0.012],
-      "roughness": 0.5,
-      "clearcoat": 0.28,
-      "clearcoatRoughness": 0.2
+      "roughness": 0.5
     },
     "light-square": {
       "type": "principled",
       "baseColor": [0.78, 0.58, 0.31],
-      "roughness": 0.5,
-      "clearcoat": 0.22,
-      "clearcoatRoughness": 0.2
+      "roughness": 0.5
     },
     "dark-square": {
       "type": "principled",
       "baseColor": [0.19, 0.055, 0.025],
-      "roughness": 0.46,
-      "clearcoat": 0.25,
-      "clearcoatRoughness": 0.18
+      "roughness": 0.46
     },
     "ivory": {
       "type": "principled",
       "baseColor": [0.92, 0.84, 0.66],
-      "roughness": 0.18,
-      "clearcoat": 0.32,
-      "clearcoatRoughness": 0.1
+      "roughness": 0.18
     },
     "ebony": {
       "type": "principled",
       "baseColor": [0.025, 0.018, 0.014],
       "roughness": 0.13,
-      "metallic": 0.08,
-      "clearcoat": 0.42,
-      "clearcoatRoughness": 0.08
+      "metallic": 0.08
     },
     "wall": {
       "type": "principled",
@@ -178,8 +166,7 @@
       "type": "directional",
       "direction": [0.45, -1.0, -0.35],
       "color": [1.0, 0.93, 0.82],
-      "irradiance": 0.55,
-      "angularRadius": 0.012
+      "irradiance": 1.8
     },
     {
       "type": "point",
