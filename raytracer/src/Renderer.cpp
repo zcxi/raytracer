@@ -323,7 +323,8 @@ void Renderer::render() {
         std::chrono::steady_clock::now();
     const int height = camera.getImageHeight();
     const int width = camera.getImageWidth();
-    accumulationBuffer.assign(
+    accumulationBuffer.clear();
+    accumulationBuffer.resize(
         height,
         std::vector<AccumulationRecord>(width, AccumulationRecord()));
     scene.finalize();

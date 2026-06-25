@@ -13,15 +13,6 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
-namespace {
-
-void stbiWriteCallback(void* context, void* data, int size) {
-    std::ofstream* file = static_cast<std::ofstream*>(context);
-    file->write(static_cast<const char*>(data), size);
-}
-
-} // namespace
-
 double ImageWriter::applyExposure(double linearValue, double exposure) {
     return std::max(0.0, linearValue) * std::pow(2.0, exposure);
 }
