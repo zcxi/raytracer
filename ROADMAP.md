@@ -353,6 +353,8 @@ small floating-point differences are acceptable when they improve throughput.
 
 **Target release: v1.3.**
 
+**Status: completed for v1.3 on June 25, 2026.**
+
 Replace hardcoded scene construction in `main.cpp` with versioned JSON scene
 files. A scene file should describe the camera, renderer defaults, environment,
 textures, materials, lights, geometry, transforms, and external assets without
@@ -562,6 +564,8 @@ requiring the renderer to be recompiled.
 ## Phase 10: Adaptive Sampling and Lighting Efficiency
 
 **Target release: v1.4.**
+
+**Status: completed for v1.4 on June 25, 2026.**
 
 Reduce wasted samples and shadow work while expanding practical lighting
 controls. This milestone includes only features that have a credible path to

@@ -1,16 +1,18 @@
 {
   "version": 1,
   "render": {
-    "width": 800,
-    "height": 600,
+    "width": 1280,
+    "height": 720,
     "samples": 64,
     "previewInterval": 8,
     "seed": 3,
     "maxBounces": 6,
     "russianRouletteStart": 4,
     "tileSize": 16,
-    "exposure": 0.3,
-    "toneMapper": "aces"
+    "exposure": 0.0,
+    "toneMapper": "aces",
+    "autoExposure": true,
+    "targetLuminance": 0.5
   },
   "camera": {
     "position": [9.5, 7.2, 3.5],

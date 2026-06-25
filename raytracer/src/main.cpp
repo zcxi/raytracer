@@ -44,6 +44,8 @@ struct CommandLineOptions {
     bool adaptiveAbsoluteError = false;
     bool adaptiveLuminanceFloor = false;
     bool adaptiveBatch = false;
+    bool noAutoExposure = false;
+    bool targetLuminance = false;
     RenderSettings render;
     ImageOutputSettings output;
     double envIntensity = 1.0;
@@ -182,7 +184,9 @@ void printUsage() {
         << "  --relative-error N  Relative error threshold (default 0.05)\n"
         << "  --absolute-error N  Absolute error threshold (default 0.005)\n"
         << "  --luminance-floor N Luminance floor for relative error\n"
-        << "  --denoise         Enable a-trous denoising\n";
+        << "  --denoise         Enable a-trous denoising\n"
+        << "  --no-auto-exposure  Disable automatic exposure\n"
+        << "  --target-luminance N Target middle-grey luminance (default 0.18)\n";
 }
 
 CommandLineOptions parseArguments(
@@ -206,6 +210,18 @@ CommandLineOptions parseArguments(
         }
         if (argument == "--stats") {
             options.statistics = true;
+            continue;
+        }
+        if (argument == "--adaptive") {
+            options.render.adaptiveSampling = true;
+            continue;
+        }
+        if (argument == "--denoise") {
+            options.render.denoise.enabled = true;
+            continue;
+        }
+        if (argument == "--no-auto-exposure") {
+            options.noAutoExposure = true;
             continue;
         }
         if (index >= argc) {
@@ -275,9 +291,6 @@ CommandLineOptions parseArguments(
         } else if (argument == "--fov") {
             options.fovValue = parseDouble(value, argument);
             options.fov = true;
-        } else if (argument == "--adaptive") {
-            options.render.adaptiveSampling = true;
-            index--;
         } else if (argument == "--min-samples") {
             options.render.adaptiveMinSamples =
                 parseUnsigned(value, argument);
@@ -302,9 +315,9 @@ CommandLineOptions parseArguments(
             options.render.adaptiveLuminanceFloor =
                 parseDouble(value, argument);
             options.adaptiveLuminanceFloor = true;
-        } else if (argument == "--denoise") {
-            options.render.denoise.enabled = true;
-            index--;
+        } else if (argument == "--target-luminance") {
+            options.output.targetLuminance = parseDouble(value, argument);
+            options.targetLuminance = true;
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
@@ -376,6 +389,13 @@ void applyOverrides(
     }
     if (options.exposure) {
         loaded.outputSettings.exposure = options.output.exposure;
+    }
+    if (options.noAutoExposure) {
+        loaded.outputSettings.autoExposure = false;
+    }
+    if (options.targetLuminance) {
+        loaded.outputSettings.targetLuminance =
+            options.output.targetLuminance;
     }
     if (options.toneMapper) {
         loaded.outputSettings.toneMapper = options.output.toneMapper;

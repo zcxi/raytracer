@@ -8,14 +8,23 @@
 
 #include "../../Math/Vec3.h"
 
+enum class LightRejection {
+    None,
+    Range,
+    Cone,
+    Backface
+};
+
 struct LightSample {
     Vec3 direction;
     Vec3 radiance;
     double maximumDistance;
     bool valid;
+    LightRejection rejection;
 
     LightSample()
-        : direction(), radiance(), maximumDistance(0.0), valid(false) {}
+        : direction(), radiance(), maximumDistance(0.0), valid(false),
+          rejection(LightRejection::None) {}
 };
 
 class LightSource {

@@ -3,6 +3,11 @@
 A small C++26 path tracer. Version 1.4 adds adaptive sampling, directional
 and spot lights, light-influence culling counters, and a SIMD AABB prototype.
 
+Adaptive mode is enabled with `--adaptive` and configured with
+`--min-samples`, `--max-samples`, `--adaptive-batch`, `--relative-error`,
+`--absolute-error`, and `--luminance-floor`. Render summaries report actual
+samples traced, average samples per pixel, convergence, and samples saved.
+
 ## Building
 
 The project uses CMake 3.25 or newer and a C++26 compiler.
@@ -87,8 +92,9 @@ rendering:
 ```
 
 Relative asset paths (OBJ meshes, PPM textures, environment maps) are
-resolved from the scene file's directory. The bundled `demo.json` and
-`chessboard.json` in `scenes/` are the reference implementations. See
+resolved from the file that declares them, including resources declared by an
+included scene file. Include cycles and duplicate named resources are rejected.
+The bundled `demo.json` and `chessboard.json` in `scenes/` are the reference implementations. See
 [ROADMAP.md](ROADMAP.md) (Phase 9) for the full JSON schema and field
 reference.
 

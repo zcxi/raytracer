@@ -31,6 +31,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <fstream>
 #include <iostream>
@@ -192,7 +193,9 @@ void testPerformanceQuickWins() {
            "Regular image output succeeds.");
     expect(accumulationWriter.writeAccumulation(accumulation, 4),
            "Accumulation output succeeds without a framebuffer copy.");
-    expect(readBytes(averagedPath) == readBytes(accumulationPath),
+    auto ab = readBytes(averagedPath);
+    auto ac = readBytes(accumulationPath);
+    expect(ab == ac,
            "Direct accumulation output is byte-identical to averaged output.");
     std::remove(averagedPath.c_str());
     std::remove(accumulationPath.c_str());
@@ -211,7 +214,9 @@ void testPerformanceQuickWins() {
         RenderSettings(4, 1, 9, 2, 2, 2, 2));
     batchedRenderer.render();
     passRenderer.render();
-    expect(readBytes(batchedPath) == readBytes(passPath),
+    auto bb = readBytes(batchedPath);
+    auto pb = readBytes(passPath);
+    expect(bb == pb,
            "Tile sample batching preserves deterministic accumulation.");
     std::remove(batchedPath.c_str());
     std::remove(passPath.c_str());
@@ -308,6 +313,135 @@ void testJsonSceneLoading() {
         "invalid JSON",
         "JSON loader reports malformed input.");
     std::remove(malformedPath.c_str());
+
+    const std::string phase10Path = "test-phase10-scene.json";
+    {
+        std::ofstream scene(phase10Path.c_str());
+        scene
+            << "{\"version\":1,"
+               "\"render\":{\"adaptiveSampling\":true,"
+               "\"adaptiveMinSamples\":4,\"adaptiveMaxSamples\":32,"
+               "\"adaptiveBatch\":4,\"adaptiveRelativeError\":0.1,"
+               "\"adaptiveAbsoluteError\":0.01,"
+               "\"adaptiveLuminanceFloor\":0.02},"
+               "\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"lights\":["
+               "{\"type\":\"point\",\"position\":[0,2,0],"
+               "\"color\":[1,1,1],\"intensity\":10,\"range\":5},"
+               "{\"type\":\"directional\",\"direction\":[0,-1,0],"
+               "\"color\":[1,1,1],\"irradiance\":2},"
+               "{\"type\":\"spot\",\"position\":[0,2,0],"
+               "\"direction\":[0,-1,0],\"color\":[1,1,1],"
+               "\"intensity\":10,\"range\":5,"
+               "\"innerAngle\":0.1,\"outerAngle\":0.4}]}\n";
+    }
+    LoadedScene phase10 = JsonSceneLoader::load(phase10Path);
+    expect(phase10.renderSettings.adaptiveSampling &&
+               phase10.renderSettings.adaptiveMinSamples == 4 &&
+               phase10.renderSettings.adaptiveMaxSamples == 32 &&
+               phase10.scene->lightCount() == 3,
+           "JSON scenes configure adaptive sampling and all analytic light types.");
+    std::remove(phase10Path.c_str());
+
+    const std::string invalidAdaptivePath =
+        "test-invalid-adaptive-scene.json";
+    {
+        std::ofstream scene(invalidAdaptivePath.c_str());
+        scene
+            << "{\"version\":1,"
+               "\"render\":{\"adaptiveSampling\":true,"
+               "\"adaptiveMinSamples\":64,\"adaptiveMaxSamples\":8},"
+               "\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1}}\n";
+    }
+    expectRuntimeError(
+        [invalidAdaptivePath]() {
+            JsonSceneLoader::validate(invalidAdaptivePath);
+        },
+        "adaptiveMinSamples",
+        "JSON validation rejects inconsistent adaptive sample limits.");
+    std::remove(invalidAdaptivePath.c_str());
+
+    namespace fs = std::filesystem;
+    const fs::path includeRoot = "test-scene-includes";
+    const fs::path assetDirectory = includeRoot / "assets";
+    fs::create_directories(assetDirectory);
+    {
+        std::ofstream texture(
+            (assetDirectory / "pixel.ppm").string().c_str(),
+            std::ios::binary);
+        texture << "P6\n1 1\n255\n";
+        const unsigned char pixel[3] = {64, 128, 255};
+        texture.write(reinterpret_cast<const char*>(pixel), 3);
+    }
+    {
+        std::ofstream mesh(
+            (assetDirectory / "triangle.obj").string().c_str());
+        mesh << "v -1 -1 -4\nv 1 -1 -4\nv 0 1 -4\nf 1 2 3\n";
+    }
+    {
+        std::ofstream child(
+            (includeRoot / "resources.json").string().c_str());
+        child
+            << "{\n"
+            << "  \"textures\": {\"pixel\": {\"type\": \"image\","
+               " \"path\": \"assets/pixel.ppm\"}},\n"
+            << "  \"materials\": {\"textured\": {\"type\": \"diffuse\","
+               " \"albedo\": [1,1,1], \"texture\": \"pixel\"}},\n"
+            << "  \"objects\": [{\"name\": \"included-mesh\","
+               " \"type\": \"obj\", \"path\": \"assets/triangle.obj\","
+               " \"material\": \"textured\"}]\n"
+            << "}\n";
+    }
+    const fs::path includeScene = includeRoot / "scene.json";
+    {
+        std::ofstream scene(includeScene.string().c_str());
+        scene
+            << "{\"version\":1,\"includes\":[\"resources.json\"],"
+               "\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1}}\n";
+    }
+    LoadedScene included = JsonSceneLoader::load(includeScene.string());
+    expect(included.summary.textures == 1 &&
+               included.summary.materials == 1 &&
+               included.scene->shapeCount() == 1,
+           "Included resources load with paths relative to the declaring file.");
+    HitRecord includedHit;
+    expect(included.scene->findClosestHit(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, includedHit),
+           "Included OBJ geometry participates in scene intersections.");
+
+    {
+        std::ofstream first((includeRoot / "cycle-a.json").string().c_str());
+        first << "{\"includes\":[\"cycle-b.json\"]}\n";
+        std::ofstream second((includeRoot / "cycle-b.json").string().c_str());
+        second << "{\"includes\":[\"cycle-a.json\"]}\n";
+    }
+    expectRuntimeError(
+        [includeRoot]() {
+            JsonSceneLoader::validate(
+                (includeRoot / "cycle-a.json").string());
+        },
+        "include cycle detected",
+        "JSON loader detects include cycles.");
+
+    const fs::path invalidSection = includeRoot / "invalid-section.json";
+    {
+        std::ofstream scene(invalidSection.string().c_str());
+        scene
+            << "{\"version\":1,\"materials\":[],"
+               "\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1}}\n";
+    }
+    expectRuntimeError(
+        [invalidSection]() {
+            JsonSceneLoader::validate(invalidSection.string());
+        },
+        "materials: must be an object",
+        "JSON loader validates resource section container types.");
+    fs::remove_all(includeRoot);
 }
 
 void testQuaternionRotation() {
@@ -1031,6 +1165,8 @@ void testDirectionalAndSpotLights() {
     expect(!sun.sampleIncident(
                Vec3(), Vec3(0.0, -1.0, 0.0), dirSample),
            "Directional light is rejected when facing away.");
+    expect(dirSample.rejection == LightRejection::Backface,
+           "Directional lights classify back-facing rejection.");
     expect(!sun.isFinite(),
            "Directional lights report non-finite position.");
     expect(sun.getDirection().Y() < -0.99,
@@ -1047,11 +1183,15 @@ void testDirectionalAndSpotLights() {
                Vec3(0.0, 0.0, 0.0), Vec3(0.0, -1.0, 0.0), spotSample),
            "Spot light is rejected when facing away.");
     expect(!spot.sampleIncident(
-               Vec3(0.0, 10.0, 0.0), Vec3(0.0, -1.0, 0.0), spotSample),
+               Vec3(0.0, 11.0, 0.0), Vec3(0.0, -1.0, 0.0), spotSample),
            "Spot light is rejected outside its range.");
+    expect(spotSample.rejection == LightRejection::Range,
+           "Spot lights classify range rejection.");
     expect(!spot.sampleIncident(
-               Vec3(20.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), spotSample),
+               Vec3(2.0, 1.0, 0.0), Vec3(0.0, 1.0, 0.0), spotSample),
            "Spot light is rejected outside its outer cone.");
+    expect(spotSample.rejection == LightRejection::Cone,
+           "Spot lights classify cone rejection.");
     expect(spot.getRange() == 5.0,
            "Spot source stores its range.");
     expect(spot.getInnerAngle() == 0.1,
@@ -1095,6 +1235,45 @@ void testDirectionalAndSpotLights() {
         spotSampler, PathTraceSettings(1, 99)).radiance;
     expect(spotLit.X() > 0.0,
            "Scene integrates spot light radiance.");
+
+    PointSource rangedPoint(
+        Vec3(0.0, 0.0, 2.0), Vec3(1.0, 1.0, 1.0), 10.0, 1.0);
+    LightSample pointSample;
+    expect(!rangedPoint.sampleIncident(
+               Vec3(), Vec3(0.0, 0.0, 1.0), pointSample) &&
+               pointSample.rejection == LightRejection::Range,
+           "Point lights reject samples outside their optional range.");
+
+    Scene cullingScene;
+    cullingScene.addShape(std::unique_ptr<Shape>(
+        new Plane(
+            Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -1.0),
+            Material::diffuse(Vec3(1.0, 1.0, 1.0)))));
+    cullingScene.addLight(std::unique_ptr<LightSource>(
+        new PointSource(
+            Vec3(0.0, 0.0, 2.0), Vec3(1.0, 1.0, 1.0),
+            10.0, 1.0)));
+    cullingScene.addLight(std::unique_ptr<LightSource>(
+        new PointSource(
+            Vec3(0.0, 0.0, -2.0), Vec3(1.0, 1.0, 1.0), 10.0)));
+    cullingScene.addLight(std::unique_ptr<LightSource>(
+        new SpotSource(
+            Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0),
+            Vec3(1.0, 1.0, 1.0), 10.0, 10.0, 0.1, 0.2)));
+    TraceStats cullingStats;
+    {
+        TraceStatsScope scope(&cullingStats);
+        Sampler sampler(0, 0, 1);
+        (void)cullingScene.trace(
+            Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+            sampler, PathTraceSettings(1, 99));
+    }
+    expect(cullingStats.rangeRejects == 1 &&
+               cullingStats.backfaceRejects == 1 &&
+               cullingStats.coneRejects == 1,
+           "Tracing statistics distinguish range, back-face, and cone culling.");
+    expect(cullingStats.emittedShadowRays == 0,
+           "Rejected finite lights do not emit shadow rays.");
 }
 
 void testAdaptiveSampling() {
@@ -1120,8 +1299,8 @@ void testAdaptiveSampling() {
            "Averaged output matches the arithmetic mean of added samples.");
     expect(record.luminanceVariance() > 0.0,
            "Non-constant luminance produces positive variance.");
-    expect(record.checkConvergence(2, 1.0, 1e-9, 0.01),
-           "A loose relative threshold marks a record converged.");
+    expect(record.checkConvergence(2, 1.0, 1.0, 0.01),
+           "Loose relative and absolute thresholds mark a record converged.");
     expect(record.converged,
            "Convergence state is sticky after the first check passes.");
 
@@ -1143,6 +1322,13 @@ void testAdaptiveSampling() {
     fewSamples.addSample(Vec3(0.9, 0.8, 0.7));
     expect(!fewSamples.checkConvergence(999, 0.01, 1e-9, 0.01),
            "Convergence check returns false when sample count is below minimum.");
+
+    AccumulationRecord oneThresholdOnly;
+    for (const Vec3& value : values) {
+        oneThresholdOnly.addSample(value);
+    }
+    expect(!oneThresholdOnly.checkConvergence(2, 1.0, 1e-9, 0.01),
+           "Adaptive convergence requires both relative and absolute error limits.");
 
     RenderSettings adaptiveSettings;
     adaptiveSettings.adaptiveSampling = true;
@@ -1170,6 +1356,17 @@ void testAdaptiveSampling() {
             RenderSettings(1, 0, 1, 1, 1, 1, 1, false, true, 16, 32, 0));
         (void)invalid;
     }, "Adaptive renderer rejects zero batch size.");
+    expectThrows([]() {
+        ImageWriter writer("unused.ppm");
+        Scene scene;
+        Camera camera(Vec3(), Vec3(), 1, 1, PI * 0.5);
+        Renderer invalid(
+            writer, scene, camera,
+            RenderSettings(
+                1, 0, 1, 1, 1, 1, 1, false, true,
+                16, 32, 4, -0.1, 0.005, 0.01));
+        (void)invalid;
+    }, "Adaptive renderer rejects negative error thresholds.");
 }
 
 void testSimdAabb() {

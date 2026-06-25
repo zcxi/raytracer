@@ -145,7 +145,7 @@ struct AccumulationRecord {
                           double luminanceFloor) {
         if (converged) return true;
         if (sampleCount < minSamples) return false;
-        converged = relativeError(luminanceFloor) <= relativeThreshold ||
+        converged = relativeError(luminanceFloor) <= relativeThreshold &&
                     absoluteError() <= absoluteThreshold;
         return converged;
     }

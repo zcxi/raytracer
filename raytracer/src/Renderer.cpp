@@ -8,6 +8,7 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
+#include <cmath>
 #include <stdexcept>
 #include "Renderer.h"
 
@@ -43,6 +44,16 @@ Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
         if (settings.adaptiveBatch == 0) {
             throw std::invalid_argument(
                 "Adaptive sample batch must be positive.");
+        }
+        if (!std::isfinite(settings.adaptiveRelativeError) ||
+            settings.adaptiveRelativeError < 0.0 ||
+            !std::isfinite(settings.adaptiveAbsoluteError) ||
+            settings.adaptiveAbsoluteError < 0.0 ||
+            !std::isfinite(settings.adaptiveLuminanceFloor) ||
+            settings.adaptiveLuminanceFloor <= 0.0) {
+            throw std::invalid_argument(
+                "Adaptive error thresholds must be finite and non-negative, "
+                "and the luminance floor must be positive.");
         }
     }
 }
@@ -160,7 +171,10 @@ unsigned int Renderer::convergedPixelCount() const {
 
 void Renderer::writeAdaptiveOutput(unsigned int maxSamples) {
     std::vector<std::vector<Vec3>> result = prepareOutput();
-    imageWriter.writeAdaptive(result, maxSamples);
+    if (!imageWriter.writeAdaptive(result, maxSamples)) {
+        throw std::runtime_error(
+            "Failed to write adaptive rendered image.");
+    }
 }
 
 std::vector<std::vector<Vec3>> Renderer::prepareOutput() const {
@@ -175,16 +189,26 @@ std::vector<std::vector<Vec3>> Renderer::prepareOutput() const {
     std::vector<std::vector<Vec3>> position(
         height, std::vector<Vec3>(width));
 
+    double luminanceSum = 0.0;
+    std::size_t validPixels = 0;
     for (int r = 0; r < height; ++r) {
         for (int c = 0; c < width; ++c) {
             const AccumulationRecord& record =
                 accumulationBuffer[r][c];
-            color[r][c] = record.averaged();
+            Vec3 pixel = record.averaged();
+            color[r][c] = pixel;
             albedo[r][c] = record.averagedAlbedo();
             Vec3 avgN = record.averagedNormal();
             double nlen = avgN.getLength();
             normal[r][c] = nlen > 1e-9 ? avgN / nlen : Vec3();
             position[r][c] = record.averagedPosition();
+
+            double lum = 0.2126 * pixel.X() + 0.7152 * pixel.Y() +
+                         0.0722 * pixel.Z();
+            if (lum > 0.0) {
+                luminanceSum += std::log(lum + 1e-10);
+                ++validPixels;
+            }
         }
     }
 
@@ -192,6 +216,20 @@ std::vector<std::vector<Vec3>> Renderer::prepareOutput() const {
         ATrousDenoiser::denoise(
             color, albedo, normal, position,
             settings.denoise, color);
+    }
+
+    if (validPixels > 0) {
+        double avgLogLuminance =
+            std::exp(luminanceSum / validPixels);
+        double targetLum = imageWriter.getSettings().targetLuminance;
+        double autoEv = std::log(targetLum / avgLogLuminance) /
+                        std::log(2.0);
+        double baseExposure = imageWriter.getSettings().autoExposure
+                                  ? autoEv
+                                  : 0.0;
+        double finalExposure =
+            baseExposure + imageWriter.getConfiguredExposure();
+        const_cast<ImageWriter&>(imageWriter).setExposure(finalExposure);
     }
     return color;
 }
@@ -315,16 +353,18 @@ void Renderer::render() {
                     renderPass(completedSamples, batchSize);
                 completedSamples += batchSize;
                 unsigned int passConverged = convergedPixelCount();
-                previewCountdown -= batchSize;
+                const bool previewDue =
+                    settings.previewInterval > 0 &&
+                    batchSize >= previewCountdown;
+                previewCountdown = previewDue
+                    ? settings.previewInterval
+                    : previewCountdown - batchSize;
                 bool finalPass =
                     completedSamples >= settings.adaptiveMaxSamples ||
                     (passConverged >= totalPixels &&
                      completedSamples >= settings.adaptiveMinSamples);
-                if (finalPass || previewCountdown <= 0) {
+                if (finalPass || previewDue) {
                     writeAdaptiveOutput(completedSamples);
-                    previewCountdown = settings.previewInterval > 0
-                                           ? settings.previewInterval
-                                           : settings.adaptiveBatch;
                     unsigned int activePixels = totalPixels - passConverged;
                     std::cout << "Rendered " << completedSamples
                               << "/" << settings.adaptiveMaxSamples
@@ -360,8 +400,7 @@ void Renderer::render() {
                 if (finalPass || previewPass) {
                     std::vector<std::vector<Vec3>> result =
                         prepareOutput();
-                    if (!imageWriter.writeAccumulation(
-                            result, completedSamples)) {
+                    if (!imageWriter.write(result)) {
                         throw std::runtime_error(
                             "Failed to write rendered image.");
                     }
@@ -381,12 +420,17 @@ void Renderer::render() {
 
     const std::chrono::duration<double> elapsed =
         std::chrono::steady_clock::now() - renderStart;
-    unsigned int effectiveSamples =
-        settings.adaptiveSampling
-            ? settings.adaptiveMaxSamples
-            : settings.samplesPerPixel;
-    double primarySamples =
-        static_cast<double>(width) * height * effectiveSamples;
+    double primarySamples = 0.0;
+    if (settings.adaptiveSampling) {
+        for (const auto& row : accumulationBuffer) {
+            for (const auto& record : row) {
+                primarySamples += record.sampleCount;
+            }
+        }
+    } else {
+        primarySamples =
+            static_cast<double>(width) * height * settings.samplesPerPixel;
+    }
     std::cout << "Render time: " << std::fixed
               << std::setprecision(3) << elapsed.count()
               << " s; primary samples: "
@@ -399,20 +443,18 @@ void Renderer::render() {
         unsigned int totalPixels =
             static_cast<unsigned int>(width) * height;
         unsigned int converged = convergedPixelCount();
-        double avgSamples = 0.0;
-        double maxActualSamples = 0.0;
-        for (const auto& row : accumulationBuffer) {
-            for (const auto& record : row) {
-                avgSamples += record.sampleCount;
-                if (record.sampleCount > maxActualSamples) {
-                    maxActualSamples =
-                        record.sampleCount;
-                }
-            }
-        }
-        avgSamples /= totalPixels;
+        const double avgSamples = primarySamples / totalPixels;
+        const double fixedBudget =
+            static_cast<double>(totalPixels) *
+            settings.adaptiveMaxSamples;
+        const double savedPercent = fixedBudget > 0.0
+            ? 100.0 * (fixedBudget - primarySamples) / fixedBudget
+            : 0.0;
         std::cout << "; converged: " << converged << "/" << totalPixels
-                  << "; avg spp: " << std::setprecision(1) << avgSamples;
+                  << " (" << std::setprecision(1)
+                  << 100.0 * converged / totalPixels << "%)"
+                  << "; avg spp: " << avgSamples
+                  << "; samples saved: " << savedPercent << "%";
     }
     if (settings.collectStats) {
         const TraceStats stats = combinedStats();
@@ -426,6 +468,8 @@ void Renderer::render() {
                   << "; lights: " << stats.consideredLights
                   << "; emitted shadow rays: " << stats.emittedShadowRays
                   << "; occluded: " << stats.occludedShadowRays
+                  << "; range rejects: " << stats.rangeRejects
+                  << "; cone rejects: " << stats.coneRejects
                   << "; backface rejects: " << stats.backfaceRejects;
     }
     std::cout << "." << std::endl;

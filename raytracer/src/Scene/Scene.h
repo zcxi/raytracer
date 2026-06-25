@@ -96,10 +96,15 @@ class Scene {
         std::vector<const Shape*> unboundedShapes;
         std::vector<std::unique_ptr<LightSource>> lightSources;
         std::vector<const Shape*> emissiveShapes;
+        Aabb aggregateBounds;
+        bool hasAggregateBounds;
         mutable Bvh bvh;
         mutable bool accelerationDirty;
         mutable std::size_t accelerationBuildCount;
         bool accelerationEnabled;
+
+        double directionalShadowDistance(
+            const Vec3& origin, const Vec3& direction) const;
 };
 
 

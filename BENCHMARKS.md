@@ -99,3 +99,39 @@ before integrating packet traversal into the production BVH. SIMD AABB support
 remains as a prototype guarded by `RAYTRACER_SIMD` and excluded from the
 production integrator. Further gains would require keeping ray data in SIMD
 registers for an entire packet traversal, not rematerialising per AABB test.
+
+## Phase 10 / v1.4 — Adaptive Sampling
+
+Measured June 25, 2026 with GCC 16.1.0 in a Release build on `scenes/demo.json`.
+Both renders used the same seed, disabled automatic exposure, and used a
+32-sample maximum. Adaptive sampling used 8 minimum samples, batches of 4,
+relative error 0.08, absolute error 0.01, and luminance floor 0.02.
+
+| Mode | Time | Primary samples | Average spp | Relative speed |
+| --- | ---: | ---: | ---: | ---: |
+| Fixed 32 spp | 5.440 s | 13,107,200 | 32.0 | 1.00x |
+| Adaptive 8–32 spp | 3.607 s | 8,907,864 | 21.7 | **1.51x** |
+
+Adaptive sampling saved **32.0%** of primary samples. Compared with the fixed
+32-spp tone-mapped PPM, its normalized byte-domain RMSE was **0.01624** and MAE
+was **0.00567**. The result clears the roadmap's 1.5x representative-scene
+speed target at low measured output error.
+
+## Phase 10 / v1.4 — Light Influence Culling
+
+The focused `scenes/milestone10-lights.json` render contains one useful
+directional light plus point and spot lights deliberately rejected by range,
+cone, or surface orientation.
+
+| Counter | Count |
+| --- | ---: |
+| Considered analytic lights | 19,196 |
+| Emitted shadow rays | 4,527 |
+| Range rejects | 4,799 |
+| Cone rejects | 4,799 |
+| Back-facing rejects | 5,071 |
+
+The pre-shadow checks rejected **14,669** light evaluations, avoiding shadow
+rays for **76.4%** of considered lights in this stress scene. Directional
+shadow rays use a finite conservative distance when every scene occluder is
+bounded; scenes containing an infinite plane retain an infinite bound.

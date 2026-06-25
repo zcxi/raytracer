@@ -32,8 +32,10 @@ bool DirectionalSource::sampleIncident(
         const Vec3& point, const Vec3& surfaceNormal,
         LightSample& sample) const {
     (void)point;
+    sample = LightSample();
     const Vec3 towardLight = -dir;
     if (surfaceNormal.dot(towardLight) <= 0.0) {
+        sample.rejection = LightRejection::Backface;
         return false;
     }
     sample.direction = towardLight;

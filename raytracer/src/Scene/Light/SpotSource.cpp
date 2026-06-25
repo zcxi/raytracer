@@ -48,7 +48,7 @@ double SpotSource::getIncidentBrightness(
     }
     const double pi = 3.14159265358979323846;
     double falloff = intensity / (4.0 * pi * distance * distance);
-    if (cosine > innerCosine + Vec3::EPSILON) {
+    if (cosine < innerCosine) {
         const double t = (cosine - outerCosine) /
             std::max(Vec3::EPSILON, innerCosine - outerCosine);
         falloff *= t * t * (3.0 - 2.0 * t);
@@ -59,18 +59,22 @@ double SpotSource::getIncidentBrightness(
 bool SpotSource::sampleIncident(
         const Vec3& point, const Vec3& surfaceNormal,
         LightSample& sample) const {
+    sample = LightSample();
     const Vec3 toLight = position - point;
     const double distance = toLight.getLength();
     if (distance <= Vec3::EPSILON || distance > range) {
+        sample.rejection = LightRejection::Range;
         return false;
     }
     const Vec3 direction = toLight / distance;
     if (surfaceNormal.dot(direction) <= 0.0) {
+        sample.rejection = LightRejection::Backface;
         return false;
     }
     const double cosine = (-direction).dot(dir);
     const double outerCosine = std::cos(outerAngle);
     if (cosine < outerCosine) {
+        sample.rejection = LightRejection::Cone;
         return false;
     }
     const double innerCosine = std::cos(innerAngle);

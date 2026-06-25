@@ -16,6 +16,8 @@ Scene::Scene(const Vec3& background)
       boundedShapes(),
       unboundedShapes(),
       emissiveShapes(),
+      aggregateBounds(),
+      hasAggregateBounds(false),
       bvh(),
       accelerationDirty(false),
       accelerationBuildCount(0),
@@ -119,13 +121,23 @@ Vec3 Scene::pointLighting(
         if (!lightSource->sampleIncident(
                 hit.point, hit.normal, sample)) {
             if (stats) {
-                ++stats->backfaceRejects;
+                if (sample.rejection == LightRejection::Range) {
+                    ++stats->rangeRejects;
+                } else if (sample.rejection == LightRejection::Cone) {
+                    ++stats->coneRejects;
+                } else if (sample.rejection == LightRejection::Backface) {
+                    ++stats->backfaceRejects;
+                }
             }
             continue;
         }
         const Vec3 shadowOrigin =
             hit.point + hit.normal * RAY_EPSILON;
         const Ray shadowRay(shadowOrigin, sample.direction);
+        if (!lightSource->isFinite()) {
+            sample.maximumDistance = directionalShadowDistance(
+                shadowOrigin, sample.direction);
+        }
         if (stats) {
             ++stats->emittedShadowRays;
         }
@@ -363,6 +375,10 @@ void Scene::addShape(std::unique_ptr<Shape> shape) {
         Aabb bounds;
         if (shape->boundingBox(bounds)) {
             boundedShapes.push_back(shape.get());
+            aggregateBounds = hasAggregateBounds
+                ? Aabb::surrounding(aggregateBounds, bounds)
+                : bounds;
+            hasAggregateBounds = true;
         } else {
             unboundedShapes.push_back(shape.get());
         }
@@ -391,4 +407,27 @@ void Scene::addLight(std::unique_ptr<LightSource> source) {
     if (source) {
         lightSources.push_back(std::move(source));
     }
+}
+
+double Scene::directionalShadowDistance(
+        const Vec3& origin, const Vec3& direction) const {
+    if (!hasAggregateBounds || !unboundedShapes.empty()) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const Vec3 minimum = aggregateBounds.min();
+    const Vec3 maximum = aggregateBounds.max();
+    double farthest = 0.0;
+    for (int x = 0; x < 2; ++x) {
+        for (int y = 0; y < 2; ++y) {
+            for (int z = 0; z < 2; ++z) {
+                const Vec3 corner(
+                    x ? maximum.X() : minimum.X(),
+                    y ? maximum.Y() : minimum.Y(),
+                    z ? maximum.Z() : minimum.Z());
+                farthest = std::max(
+                    farthest, (corner - origin).dot(direction));
+            }
+        }
+    }
+    return std::max(RAY_EPSILON, farthest + RAY_EPSILON);
 }

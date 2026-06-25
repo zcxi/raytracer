@@ -92,6 +92,37 @@ void mergeArray(Json& destination, const Json& source,
     }
 }
 
+void makeAssetPathsAbsolute(Json& value, const fs::path& sourcePath) {
+    if (value.is_array()) {
+        for (Json& element : value) {
+            makeAssetPathsAbsolute(element, sourcePath);
+        }
+        return;
+    }
+    if (!value.is_object()) {
+        return;
+    }
+
+    const bool assetResource =
+        value.contains("type") && value.at("type").is_string() &&
+        (value.at("type").get<std::string>() == "image" ||
+         value.at("type").get<std::string>() == "obj");
+    if (assetResource && value.contains("path") &&
+        value.at("path").is_string()) {
+        fs::path assetPath(value.at("path").get<std::string>());
+        if (!assetPath.is_absolute()) {
+            value["path"] =
+                (sourcePath.parent_path() / assetPath)
+                    .lexically_normal().string();
+        }
+    }
+    for (auto& [name, child] : value.items()) {
+        if (name != "includes") {
+            makeAssetPathsAbsolute(child, sourcePath);
+        }
+    }
+}
+
 Json loadWithIncludes(
         const fs::path& inputPath,
         std::unordered_set<std::string>& activePaths) {
@@ -104,6 +135,7 @@ Json loadWithIncludes(
     if (!document.is_object()) {
         fail(path, "$", "top-level value must be an object");
     }
+    makeAssetPathsAbsolute(document, path);
 
     Json merged = Json::object();
     if (document.contains("includes")) {
@@ -292,6 +324,9 @@ struct Loader {
     void loadTextures() {
         if (!document.contains("textures")) return;
         const Json& values = document.at("textures");
+        if (!values.is_object()) {
+            fail(path, "textures", "must be an object");
+        }
         for (const auto& [name, value] : values.items()) {
             const std::string context = "textures." + name;
             if (!value.is_object()) fail(path, context, "must be an object");
@@ -336,6 +371,9 @@ struct Loader {
     void loadMaterials() {
         if (!document.contains("materials")) return;
         const Json& values = document.at("materials");
+        if (!values.is_object()) {
+            fail(path, "materials", "must be an object");
+        }
         for (const auto& [name, value] : values.items()) {
             const std::string context = "materials." + name;
             if (!value.is_object()) fail(path, context, "must be an object");
@@ -593,6 +631,9 @@ struct Loader {
         loadTextures();
         loadMaterials();
         if (document.contains("prototypes")) {
+            if (!document.at("prototypes").is_object()) {
+                fail(path, "prototypes", "must be an object");
+            }
             for (const auto& [name, value] :
                  document.at("prototypes").items()) {
                 prototypes.emplace(name, value);
@@ -684,6 +725,10 @@ struct Loader {
                 render, "denoisePositionPhi", 1.0, path, "render");
             outputSettings.exposure = optionalNumber(
                 render, "exposure", 0.0, path, "render");
+            outputSettings.autoExposure = optionalBool(
+                render, "autoExposure", true, path, "render");
+            outputSettings.targetLuminance = optionalNumber(
+                render, "targetLuminance", 0.18, path, "render");
             if (render.contains("toneMapper")) {
                 outputSettings.toneMapper = parseToneMapper(
                     stringValue(render.at("toneMapper"), path,
@@ -694,6 +739,25 @@ struct Loader {
                 outputPath = resolvePath(
                     path, stringValue(render.at("output"), path,
                                       "render.output")).string();
+            }
+            if (renderSettings.adaptiveSampling) {
+                if (renderSettings.adaptiveMinSamples >
+                    renderSettings.adaptiveMaxSamples) {
+                    fail(path, "render.adaptiveMinSamples",
+                         "must be less than or equal to adaptiveMaxSamples");
+                }
+                if (renderSettings.adaptiveRelativeError < 0.0) {
+                    fail(path, "render.adaptiveRelativeError",
+                         "must be non-negative");
+                }
+                if (renderSettings.adaptiveAbsoluteError < 0.0) {
+                    fail(path, "render.adaptiveAbsoluteError",
+                         "must be non-negative");
+                }
+                if (renderSettings.adaptiveLuminanceFloor <= 0.0) {
+                    fail(path, "render.adaptiveLuminanceFloor",
+                         "must be positive");
+                }
             }
         }
 
@@ -726,6 +790,9 @@ struct Loader {
         scene->setEnvironment(environment);
         if (document.contains("lights")) {
             const Json& lights = document.at("lights");
+            if (!lights.is_array()) {
+                fail(path, "lights", "must be an array");
+            }
             for (std::size_t index = 0; index < lights.size(); ++index) {
                 const Json& light = lights.at(index);
                 const std::string context =
@@ -742,7 +809,11 @@ struct Loader {
                             vec3(required(light, "color", path, context),
                                  path, context + ".color"),
                             number(required(light, "intensity", path, context),
-                                   path, context + ".intensity"))));
+                                   path, context + ".intensity"),
+                            optionalNumber(
+                                light, "range",
+                                std::numeric_limits<double>::infinity(),
+                                path, context))));
                 } else if (type == "directional") {
                     scene->addLight(std::unique_ptr<LightSource>(
                         new DirectionalSource(
@@ -778,6 +849,9 @@ struct Loader {
         }
         if (document.contains("objects")) {
             const Json& objects = document.at("objects");
+            if (!objects.is_array()) {
+                fail(path, "objects", "must be an array");
+            }
             for (std::size_t index = 0; index < objects.size(); ++index) {
                 const Json& object = objects.at(index);
                 std::string context =
