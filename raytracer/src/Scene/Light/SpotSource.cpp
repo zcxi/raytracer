@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 #include "SpotSource.h"
+#include "../../Math/Sampler.h"
 
 SpotSource::SpotSource(const Vec3& position, const Vec3& dir,
                        const Vec3& color, double intensity,
@@ -58,7 +59,8 @@ double SpotSource::getIncidentBrightness(
 
 bool SpotSource::sampleIncident(
         const Vec3& point, const Vec3& surfaceNormal,
-        LightSample& sample) const {
+        Sampler& sampler, LightSample& sample) const {
+    (void)sampler;
     sample = LightSample();
     const Vec3 toLight = position - point;
     const double distance = toLight.getLength();

@@ -59,9 +59,7 @@ class Scene {
             environment.setIntensity(intensity);
         }
         bool loadEnvironmentMap(
-                const std::string& path, double intensity) {
-            return environment.loadPpm(path, intensity);
-        }
+                const std::string& path, double intensity);
         void setAccelerationEnabled(bool enabled) {
             accelerationEnabled = enabled;
         }
@@ -85,7 +83,7 @@ class Scene {
             Sampler& sampler) const;
         Vec3 pointLighting(
             const HitRecord& hit, const Material& material,
-            const Vec3& outgoing) const;
+            const Vec3& outgoing, Sampler& sampler) const;
         double emissiveLightPdf(
             const Vec3& origin, const HitRecord& lightHit) const;
         double environmentLightPdf(const Vec3& direction) const;

@@ -25,15 +25,20 @@ public:
     double pdf(const Vec3& direction) const;
     bool isBlack() const;
     bool loadPpm(const std::string& path, double mapIntensity = 1.0);
+    bool loadHdr(const std::string& path, double mapIntensity = 1.0);
     void setIntensity(double value);
 
 private:
+    void buildImportanceDistribution();
+    double texelWeight(unsigned int x, unsigned int y) const;
     Vec3 horizon;
     Vec3 zenith;
     double intensity;
     std::vector<Vec3> pixels;
     unsigned int width;
     unsigned int height;
+    std::vector<double> importanceCdf;
+    double importanceTotal;
 };
 
 #endif

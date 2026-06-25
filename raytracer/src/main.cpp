@@ -44,6 +44,7 @@ struct CommandLineOptions {
     bool adaptiveAbsoluteError = false;
     bool adaptiveLuminanceFloor = false;
     bool adaptiveBatch = false;
+    bool noAdaptive = false;
     bool noAutoExposure = false;
     bool targetLuminance = false;
     RenderSettings render;
@@ -178,6 +179,7 @@ void printUsage() {
         << "  --cam-rot P,Y,R   Override camera Euler rotation\n"
         << "  --fov N           Override vertical field of view\n"
         << "  --adaptive        Enable adaptive sampling\n"
+        << "  --no-adaptive     Disable adaptive sampling from scene defaults\n"
         << "  --min-samples N   Min samples per pixel for adaptive\n"
         << "  --max-samples N   Max samples per pixel for adaptive\n"
         << "  --adaptive-batch N  Samples between convergence checks\n"
@@ -214,6 +216,10 @@ CommandLineOptions parseArguments(
         }
         if (argument == "--adaptive") {
             options.render.adaptiveSampling = true;
+            continue;
+        }
+        if (argument == "--no-adaptive") {
+            options.noAdaptive = true;
             continue;
         }
         if (argument == "--denoise") {
@@ -357,7 +363,9 @@ void applyOverrides(
     if (options.statistics) {
         loaded.renderSettings.collectStats = true;
     }
-    if (options.render.adaptiveSampling) {
+    if (options.noAdaptive) {
+        loaded.renderSettings.adaptiveSampling = false;
+    } else if (options.render.adaptiveSampling) {
         loaded.renderSettings.adaptiveSampling = true;
     }
     if (options.adaptiveMinSamples) {

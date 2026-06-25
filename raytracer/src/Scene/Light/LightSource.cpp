@@ -3,6 +3,7 @@
 //
 
 #include "LightSource.h"
+#include "../../Math/Sampler.h"
 #include <stdexcept>
 
 LightSource::LightSource(const Vec3& _position, const Vec3& _color,
@@ -29,4 +30,11 @@ double LightSource::getIntensity() const{
 const Vec3& LightSource::getColor() const{
 
     return color;
+}
+
+bool LightSource::sampleIncident(
+        const Vec3& point, const Vec3& surfaceNormal,
+        LightSample& sample) const {
+    Sampler sampler(0, 0, 1);
+    return sampleIncident(point, surfaceNormal, sampler, sample);
 }

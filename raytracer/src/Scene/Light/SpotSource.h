@@ -11,13 +11,14 @@
 class SpotSource: public LightSource {
 
     public:
+        using LightSource::sampleIncident;
         SpotSource(const Vec3& position, const Vec3& dir,
                    const Vec3& color, double intensity,
                    double range, double innerAngle, double outerAngle);
         double getIncidentBrightness(const Vec3 & incidentPosition) const override;
         bool sampleIncident(
             const Vec3& point, const Vec3& surfaceNormal,
-            LightSample& sample) const override;
+            Sampler& sampler, LightSample& sample) const override;
         double getRange() const { return range; }
         double getInnerAngle() const { return innerAngle; }
         double getOuterAngle() const { return outerAngle; }

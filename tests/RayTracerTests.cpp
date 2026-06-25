@@ -16,6 +16,7 @@
 #include "Scene/Scene.h"
 #include "SceneDescription/JsonSceneLoader.h"
 #include "Shapes/Cube.h"
+#include "Shapes/Lathe.h"
 #include "Shapes/Plane.h"
 #include "Shapes/Pyramid.h"
 #include "Shapes/Rectangle.h"
@@ -24,6 +25,7 @@
 #include "Shapes/MovingSphere.h"
 #include "Shapes/Transform.h"
 #include "Shapes/RectangularPrism.h"
+#include "Shapes/RoundedBox.h"
 #include "Shapes/Sphere.h"
 #include "Writer/ImageWriter.h"
 #include "Textures/Texture.h"
@@ -776,6 +778,9 @@ void testPhysicallyBasedMaterials() {
         Vec3(0.9, 0.6, 0.2), 0.2, 1.0, 0.0, 1.5);
     const Material transmission = Material::principled(
         Vec3(1.0, 1.0, 1.0), 0.05, 0.0, 0.8, 1.45);
+    const Material coated = Material::principled(
+        Vec3(0.2, 0.4, 0.8), 0.35, 0.0, 0.0, 1.5,
+        Vec3(), 1.0, 0.08);
     expect(plastic.type == MaterialType::Principled,
            "Principled factory creates a PBR material.");
     expectNear(plastic.roughness, 0.35, 1e-9,
@@ -784,6 +789,8 @@ void testPhysicallyBasedMaterials() {
                "Principled material stores metallic weight.");
     expectNear(transmission.transmission, 0.8, 1e-9,
                "Principled material stores transmission weight.");
+    expectNear(coated.clearcoat, 1.0, 1e-9,
+               "Principled material stores clearcoat weight.");
     expectThrows([]() {
         const Material invalid = Material::principled(
             Vec3(0.5, 0.5, 0.5), 1.1, 0.0, 0.0);
@@ -814,11 +821,32 @@ void testPhysicallyBasedMaterials() {
         Bsdf::evaluate(plastic, normal, view, light);
     const Vec3 metalValue =
         Bsdf::evaluate(metal, normal, view, light);
+    const Vec3 coatedValue =
+        Bsdf::evaluate(coated, normal, view, light);
     expect(plasticValue.X() > 0.0 &&
                plasticValue.Y() > plasticValue.X(),
            "PBR plastic retains colored diffuse reflection.");
     expect(metalValue.X() > metalValue.Z(),
            "Metal Fresnel reflection is tinted by base color.");
+    expect(coatedValue.X() > plasticValue.X(),
+           "Clearcoat adds a secondary dielectric highlight.");
+
+    const std::shared_ptr<Texture> scalarTexture(
+        new SolidTexture(Vec3(0.5, 0.5, 0.5)));
+    const std::shared_ptr<Texture> flatNormal(
+        new SolidTexture(Vec3(0.5, 0.5, 1.0)));
+    const Material mapped = plastic
+        .withRoughnessTexture(scalarTexture)
+        .withMetallicTexture(scalarTexture)
+        .withNormalTexture(flatNormal);
+    expectNear(mapped.roughnessAt(0.0, 0.0, Vec3()), 0.175, 1e-9,
+               "Roughness textures modulate material roughness.");
+    expectNear(mapped.metallicAt(0.0, 0.0, Vec3()), 0.0, 1e-9,
+               "Metallic textures modulate material metallic weight.");
+    expectVecNear(
+        mapped.normalAt(0.0, 0.0, Vec3(), normal),
+        normal, 1e-9,
+        "A flat tangent-space normal map preserves the geometric normal.");
 
     Sampler firstSampler(20, 3, 77);
     Sampler secondSampler(20, 3, 77);
@@ -919,6 +947,35 @@ void testAreaLightsAndEnvironment() {
     expectNear(
         environmentSample.pdf, 1.0 / (4.0 * PI), 1e-9,
         "Uniform environment sampling has the expected PDF.");
+
+    const std::string hdrPath = "test-environment.hdr";
+    {
+        std::ofstream hdr(hdrPath.c_str(), std::ios::binary);
+        hdr << "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 8\n";
+        for (int y = 0; y < 2; ++y) {
+            const unsigned char header[4] = {2, 2, 0, 8};
+            hdr.write(reinterpret_cast<const char*>(header), 4);
+            for (int channel = 0; channel < 4; ++channel) {
+                const unsigned char count = 8;
+                hdr.write(reinterpret_cast<const char*>(&count), 1);
+                for (int x = 0; x < 8; ++x) {
+                    unsigned char value = channel == 3 ? 129 : 2;
+                    if (y == 0 && x == 0 && channel < 3) value = 255;
+                    hdr.write(reinterpret_cast<const char*>(&value), 1);
+                }
+            }
+        }
+    }
+    Environment hdrEnvironment;
+    expect(hdrEnvironment.loadHdr(hdrPath, 1.0),
+           "Radiance HDR environment maps load RGBE scanlines.");
+    Sampler hdrSampler(1, 2, 3);
+    const EnvironmentSample hdrSample = hdrEnvironment.sample(hdrSampler);
+    expect(hdrSample.pdf > 0.0 &&
+               std::isfinite(hdrSample.pdf) &&
+               hdrSample.radiance.X() > 0.0,
+           "HDR importance sampling returns finite weighted samples.");
+    std::remove(hdrPath.c_str());
     expectThrows([]() {
         const Environment invalid(
             Vec3(), Vec3(), -1.0);
@@ -1150,6 +1207,31 @@ void testSceneCapabilityFeatures() {
     Aabb transformedBounds;
     expect(transformed.boundingBox(transformedBounds),
            "Transformed instances produce world-space bounds.");
+
+    RoundedBox rounded(
+        Vec3(0.0, 0.0, -4.0), Vec3(2.0, 2.0, 2.0), 0.2,
+        Material::diffuse(Vec3(0.8, 0.8, 0.8)));
+    HitRecord roundedHit;
+    expect(rounded.intersect(
+               Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, roundedHit),
+           "Rounded boxes support ray intersection.");
+    expect(roundedHit.normal.Z() > 0.9,
+           "Rounded-box front faces retain stable normals.");
+
+    const std::vector<Lathe::ProfilePoint> profile = {
+        Lathe::ProfilePoint(0.0, 0.0), Lathe::ProfilePoint(1.0, 0.1),
+        Lathe::ProfilePoint(0.7, 1.0), Lathe::ProfilePoint(0.0, 1.2)
+    };
+    Lathe lathe(
+        profile, 24, Material::diffuse(Vec3(0.8, 0.8, 0.8)));
+    expect(lathe.triangleCount() > 40,
+           "Lathed profiles generate a smooth triangle surface.");
+    HitRecord latheHit;
+    expect(lathe.intersect(
+               Ray(Vec3(0.5, 0.5, 3.0), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, latheHit),
+           "Lathed geometry participates in BVH intersections.");
 }
 
 void testDirectionalAndSpotLights() {
@@ -1171,6 +1253,17 @@ void testDirectionalAndSpotLights() {
            "Directional lights report non-finite position.");
     expect(sun.getDirection().Y() < -0.99,
            "Directional light direction is stored normalized.");
+    DirectionalSource softSun(
+        Vec3(0.0, -1.0, 0.0), Vec3(1.0, 1.0, 1.0),
+        1.0, 0.02);
+    Sampler softSunSampler(4, 5, 6);
+    LightSample softSample;
+    expect(softSun.sampleIncident(
+               Vec3(), Vec3(0.0, 1.0, 0.0),
+               softSunSampler, softSample),
+           "Soft directional sunlight samples its angular disk.");
+    expect(softSample.direction.distanceTo(Vec3(0.0, 1.0, 0.0)) < 0.03,
+           "Soft sunlight samples remain inside the configured angular radius.");
 
     const SpotSource spot(
         Vec3(0.0, 5.0, 0.0), Vec3(0.0, -1.0, 0.0),

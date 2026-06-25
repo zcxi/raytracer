@@ -110,7 +110,7 @@ PathResult Scene::trace(const Ray& ray) const {
 
 Vec3 Scene::pointLighting(
         const HitRecord& hit, const Material& material,
-        const Vec3& outgoing) const {
+        const Vec3& outgoing, Sampler& sampler) const {
     Vec3 result;
     LightSample sample;
     TraceStats* stats = currentTraceStats();
@@ -119,7 +119,7 @@ Vec3 Scene::pointLighting(
             ++stats->consideredLights;
         }
         if (!lightSource->sampleIncident(
-                hit.point, hit.normal, sample)) {
+                hit.point, hit.normal, sampler, sample)) {
             if (stats) {
                 if (sample.rejection == LightRejection::Range) {
                     ++stats->rangeRejects;
@@ -132,7 +132,7 @@ Vec3 Scene::pointLighting(
             continue;
         }
         const Vec3 shadowOrigin =
-            hit.point + hit.normal * RAY_EPSILON;
+            hit.point + hit.geometricNormal * RAY_EPSILON;
         const Ray shadowRay(shadowOrigin, sample.direction);
         if (!lightSource->isFinite()) {
             sample.maximumDistance = directionalShadowDistance(
@@ -203,7 +203,7 @@ Vec3 Scene::directLighting(
         const HitRecord& hit, const Material& material,
         const Vec3& outgoing,
         Sampler& sampler) const {
-    Vec3 result = pointLighting(hit, material, outgoing);
+    Vec3 result = pointLighting(hit, material, outgoing, sampler);
     const std::size_t lightCount = sampledLightCount();
     if (lightCount == 0) {
         return result;
@@ -253,7 +253,7 @@ Vec3 Scene::directLighting(
         return result;
     }
     const Ray shadowRay(
-        hit.point + hit.normal * RAY_EPSILON, lightDirection);
+        hit.point + hit.geometricNormal * RAY_EPSILON, lightDirection);
     if (isOccluded(shadowRay, maximumDistance)) {
         return result;
     }
@@ -310,6 +310,12 @@ PathResult Scene::trace(const Ray& ray, Sampler& sampler,
         Material material = hit.shape->getMaterial();
         material.albedo =
             material.colorAt(hit.u, hit.v, hit.point);
+        material.roughness =
+            material.roughnessAt(hit.u, hit.v, hit.point);
+        material.metallic =
+            material.metallicAt(hit.u, hit.v, hit.point);
+        hit.normal = material.normalAt(
+            hit.u, hit.v, hit.point, hit.normal);
 
         if (firstBounce) {
             result.albedo = material.albedo;
@@ -360,10 +366,11 @@ PathResult Scene::trace(const Ray& ray, Sampler& sampler,
         }
 
         const double side =
-            bsdfSample.direction.dot(hit.normal) >= 0.0 ? 1.0 : -1.0;
+            bsdfSample.direction.dot(hit.geometricNormal) >= 0.0
+                ? 1.0 : -1.0;
         previousPoint = hit.point;
         currentRay = Ray(
-            hit.point + hit.normal * (RAY_EPSILON * side),
+            hit.point + hit.geometricNormal * (RAY_EPSILON * side),
             bsdfSample.direction);
     }
     result.radiance = radiance;
@@ -401,6 +408,17 @@ void Scene::finalize() const {
 
 void Scene::setEnvironment(const Environment& newEnvironment) {
     environment = newEnvironment;
+}
+
+bool Scene::loadEnvironmentMap(
+        const std::string& path, double intensity) {
+    const std::size_t dot = path.find_last_of('.');
+    const std::string extension =
+        dot == std::string::npos ? std::string() : path.substr(dot);
+    if (extension == ".hdr" || extension == ".HDR") {
+        return environment.loadHdr(path, intensity);
+    }
+    return environment.loadPpm(path, intensity);
 }
 
 void Scene::addLight(std::unique_ptr<LightSource> source) {

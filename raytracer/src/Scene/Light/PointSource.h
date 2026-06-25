@@ -12,13 +12,14 @@
 class PointSource: public LightSource{
 
     public:
+        using LightSource::sampleIncident;
         PointSource(
             const Vec3& position, const Vec3& color, double intensity,
             double range = std::numeric_limits<double>::infinity());
         double getIncidentBrightness(const Vec3 & incidentPosition) const override;
         bool sampleIncident(
             const Vec3& point, const Vec3& surfaceNormal,
-            LightSample& sample) const override;
+            Sampler& sampler, LightSample& sample) const override;
         double getRange() const { return range; }
 
     private:

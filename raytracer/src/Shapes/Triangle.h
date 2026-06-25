@@ -3,6 +3,9 @@
 
 #include "Shape.h"
 
+class Sampler;
+struct SurfaceSample;
+
 struct Vertex {
     Vec3 position;
     Vec3 normal;
@@ -23,6 +26,9 @@ public:
     bool intersect(const Ray& ray, double minDistance,
                    double maxDistance, HitRecord& hit) const override;
     bool boundingBox(Aabb& bounds) const override;
+    bool sampleSurface(
+        Sampler& sampler, SurfaceSample& sample) const override;
+    double computeArea() const;
 
 private:
     Vertex first;
@@ -32,4 +38,3 @@ private:
 };
 
 #endif
-

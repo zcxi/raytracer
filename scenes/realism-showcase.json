@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "render": {
+    "width": 480,
+    "height": 320,
+    "samples": 48,
+    "adaptiveSampling": true,
+    "adaptiveMinSamples": 8,
+    "adaptiveMaxSamples": 48,
+    "adaptiveBatch": 4,
+    "adaptiveRelativeError": 0.06,
+    "adaptiveAbsoluteError": 0.006,
+    "adaptiveLuminanceFloor": 0.01,
+    "maxBounces": 6,
+    "russianRouletteStart": 4,
+    "previewInterval": 0,
+    "exposure": 0.0,
+    "toneMapper": "aces",
+    "autoExposure": true,
+    "targetLuminance": 0.24
+  },
+  "camera": {
+    "position": [4.7, 3.0, 6.2],
+    "rotation": [-0.22, -0.48, 0.0],
+    "verticalFov": 0.65,
+    "aperture": 0.04,
+    "focusDistance": 8.0
+  },
+  "environment": {
+    "bottom": [0.025, 0.018, 0.014],
+    "top": [0.18, 0.24, 0.38],
+    "intensity": 0.7
+  },
+  "textures": {
+    "half-roughness": {
+      "type": "solid",
+      "color": [0.55, 0.55, 0.55]
+    },
+    "flat-normal": {
+      "type": "solid",
+      "color": [0.5, 0.5, 1.0]
+    }
+  },
+  "materials": {
+    "lacquered-ivory": {
+      "type": "principled",
+      "baseColor": [0.92, 0.82, 0.62],
+      "roughness": 0.26,
+      "roughnessTexture": "half-roughness",
+      "normalTexture": "flat-normal",
+      "normalStrength": 0.35,
+      "clearcoat": 0.55,
+      "clearcoatRoughness": 0.08
+    },
+    "lacquered-ebony": {
+      "type": "principled",
+      "baseColor": [0.025, 0.018, 0.014],
+      "roughness": 0.2,
+      "clearcoat": 0.65,
+      "clearcoatRoughness": 0.06
+    },
+    "wood": {
+      "type": "principled",
+      "baseColor": [0.28, 0.095, 0.025],
+      "roughness": 0.42,
+      "clearcoat": 0.3,
+      "clearcoatRoughness": 0.14
+    },
+    "floor": {
+      "type": "principled",
+      "baseColor": [0.08, 0.07, 0.065],
+      "roughness": 0.85
+    }
+  },
+  "lights": [
+    {
+      "type": "directional",
+      "direction": [0.55, -1.0, -0.45],
+      "color": [1.0, 0.92, 0.78],
+      "irradiance": 2.2,
+      "angularRadius": 0.018
+    }
+  ],
+  "objects": [
+    {
+      "type": "roundedBox",
+      "center": [0.0, 0.15, -4.0],
+      "dimensions": [5.2, 0.3, 3.4],
+      "radius": 0.12,
+      "material": "wood"
+    },
+    {
+      "type": "lathe",
+      "segments": 64,
+      "profile": [
+        [0.0, 0.0], [0.48, 0.03], [0.62, 0.14],
+        [0.55, 0.28], [0.34, 0.38], [0.24, 0.78],
+        [0.42, 0.94], [0.30, 1.05], [0.18, 1.23],
+        [0.30, 1.36], [0.24, 1.48], [0.0, 1.62]
+      ],
+      "material": "lacquered-ivory",
+      "transform": {
+        "translation": [-1.05, 0.3, -4.0]
+      }
+    },
+    {
+      "type": "lathe",
+      "segments": 64,
+      "profile": [
+        [0.0, 0.0], [0.48, 0.03], [0.62, 0.14],
+        [0.55, 0.28], [0.34, 0.38], [0.24, 0.78],
+        [0.42, 0.94], [0.30, 1.05], [0.18, 1.23],
+        [0.30, 1.36], [0.24, 1.48], [0.0, 1.62]
+      ],
+      "material": "lacquered-ebony",
+      "transform": {
+        "translation": [1.05, 0.3, -4.0]
+      }
+    },
+    {
+      "type": "plane",
+      "normal": [0.0, 1.0, 0.0],
+      "point": [0.0, 0.0, 0.0],
+      "material": "floor"
+    }
+  ]
+}

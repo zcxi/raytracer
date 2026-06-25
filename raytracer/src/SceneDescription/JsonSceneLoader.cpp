@@ -6,12 +6,14 @@
 #include "../Scene/Light/PointSource.h"
 #include "../Scene/Light/SpotSource.h"
 #include "../Shapes/Cube.h"
+#include "../Shapes/Lathe.h"
 #include "../Shapes/MovingSphere.h"
 #include "../Shapes/ObjMesh.h"
 #include "../Shapes/Plane.h"
 #include "../Shapes/Pyramid.h"
 #include "../Shapes/Rectangle.h"
 #include "../Shapes/RectangularPrism.h"
+#include "../Shapes/RoundedBox.h"
 #include "../Shapes/Sphere.h"
 #include "../Shapes/Transform.h"
 #include "../Shapes/Triangle.h"
@@ -406,7 +408,10 @@ struct Loader {
                     optionalNumber(value, "metallic", 0.0, path, context),
                     optionalNumber(value, "transmission", 0.0, path, context),
                     optionalNumber(value, "ior", 1.5, path, context),
-                    emission);
+                    emission,
+                    optionalNumber(value, "clearcoat", 0.0, path, context),
+                    optionalNumber(
+                        value, "clearcoatRoughness", 0.1, path, context));
             } else {
                 fail(path, context + ".type",
                      "unknown material type \"" + type + "\"");
@@ -421,6 +426,37 @@ struct Loader {
                          textureName + "\"");
                 }
                 material = material.withTexture(found->second);
+            }
+            auto textureByName = [&](const char* key)
+                    -> std::shared_ptr<Texture> {
+                if (!value.contains(key)) return std::shared_ptr<Texture>();
+                const std::string textureName = stringValue(
+                    value.at(key), path, context + "." + key);
+                const auto found = textures.find(textureName);
+                if (found == textures.end()) {
+                    fail(path, context + "." + key,
+                         "references unknown texture \"" +
+                         textureName + "\"");
+                }
+                return found->second;
+            };
+            if (value.contains("baseColorTexture")) {
+                material = material.withTexture(
+                    textureByName("baseColorTexture"));
+            }
+            if (value.contains("roughnessTexture")) {
+                material = material.withRoughnessTexture(
+                    textureByName("roughnessTexture"));
+            }
+            if (value.contains("metallicTexture")) {
+                material = material.withMetallicTexture(
+                    textureByName("metallicTexture"));
+            }
+            if (value.contains("normalTexture")) {
+                material = material.withNormalTexture(
+                    textureByName("normalTexture"),
+                    optionalNumber(
+                        value, "normalStrength", 1.0, path, context));
             }
             materials.emplace(name, material);
         }
@@ -516,6 +552,46 @@ struct Loader {
                      path, context + ".center") + geometryOffset,
                 vec3(required(object, "dimensions", path, context),
                      path, context + ".dimensions"),
+                selectedMaterial));
+        } else if (type == "roundedBox") {
+            result.reset(new RoundedBox(
+                vec3(required(object, "center", path, context),
+                     path, context + ".center") + geometryOffset,
+                vec3(required(object, "dimensions", path, context),
+                     path, context + ".dimensions"),
+                number(required(object, "radius", path, context),
+                       path, context + ".radius"),
+                selectedMaterial));
+        } else if (type == "lathe") {
+            const Json& profileValue =
+                required(object, "profile", path, context);
+            if (!profileValue.is_array() || profileValue.size() < 2) {
+                fail(path, context + ".profile",
+                     "must be an array with at least two [radius,height] points");
+            }
+            std::vector<Lathe::ProfilePoint> profile;
+            profile.reserve(profileValue.size());
+            for (std::size_t index = 0;
+                 index < profileValue.size(); ++index) {
+                const Json& point = profileValue.at(index);
+                if (!point.is_array() || point.size() != 2) {
+                    fail(path, context + ".profile[" +
+                         std::to_string(index) + "]",
+                         "must be [radius,height]");
+                }
+                profile.emplace_back(
+                    number(point.at(0), path, context + ".profile[" +
+                           std::to_string(index) + "][0]"),
+                    number(point.at(1), path, context + ".profile[" +
+                           std::to_string(index) + "][1]"));
+            }
+            result.reset(new Lathe(
+                profile,
+                object.contains("segments")
+                    ? unsignedNumber(
+                          object.at("segments"), path,
+                          context + ".segments", false)
+                    : 48,
                 selectedMaterial));
         } else if (type == "pyramid") {
             result.reset(new Pyramid(
@@ -778,9 +854,14 @@ struct Loader {
                 const fs::path mapPath = resolvePath(
                     path, stringValue(value.at("map"), path,
                                       "environment.map"));
-                if (!environment.loadPpm(mapPath.string(), intensity)) {
+                const std::string extension = mapPath.extension().string();
+                const bool loaded =
+                    extension == ".hdr" || extension == ".HDR"
+                    ? environment.loadHdr(mapPath.string(), intensity)
+                    : environment.loadPpm(mapPath.string(), intensity);
+                if (!loaded) {
                     fail(path, "environment.map",
-                         "failed to load PPM environment map " +
+                         "failed to load environment map " +
                          mapPath.string());
                 }
             }
@@ -822,7 +903,10 @@ struct Loader {
                             vec3(required(light, "color", path, context),
                                  path, context + ".color"),
                             number(required(light, "irradiance", path, context),
-                                   path, context + ".irradiance"))));
+                                   path, context + ".irradiance"),
+                            optionalNumber(
+                                light, "angularRadius", 0.0,
+                                path, context))));
                 } else if (type == "spot") {
                     scene->addLight(std::unique_ptr<LightSource>(
                         new SpotSource(

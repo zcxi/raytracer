@@ -4,6 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 #include "PointSource.h"
+#include "../../Math/Sampler.h"
 
 PointSource::PointSource(const Vec3& position, const Vec3& color,
                          double intensity, double range)
@@ -25,7 +26,8 @@ double PointSource::getIncidentBrightness(const Vec3 & incidentPosition) const{
 
 bool PointSource::sampleIncident(
         const Vec3& point, const Vec3& surfaceNormal,
-        LightSample& sample) const {
+        Sampler& sampler, LightSample& sample) const {
+    (void)sampler;
     sample = LightSample();
     const Vec3 toLight = position - point;
     const double distance = toLight.getLength();

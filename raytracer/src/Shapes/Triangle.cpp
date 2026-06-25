@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include "SurfaceSample.h"
+#include "../Math/Sampler.h"
 
 Triangle::Triangle(
         const Vertex& first, const Vertex& second,
@@ -56,5 +58,33 @@ bool Triangle::boundingBox(Aabb& bounds) const {
              std::max(first.position.Z(),
                       std::max(second.position.Z(), third.position.Z())) + epsilon));
     return true;
+}
+
+double Triangle::computeArea() const {
+    Vec3 edge1 = second.position - first.position;
+    Vec3 edge2 = third.position - first.position;
+    return 0.5 * edge1.cross(edge2).getLength();
+}
+
+bool Triangle::sampleSurface(Sampler& sampler,
+                             SurfaceSample& sample) const {
+    double r1 = sampler.next();
+    double r2 = sampler.next();
+    double sqrtR1 = std::sqrt(r1);
+    double b0 = 1.0 - sqrtR1;
+    double b1 = sqrtR1 * (1.0 - r2);
+    double b2 = sqrtR1 * r2;
+    sample.point = first.position * b0 +
+                   second.position * b1 + third.position * b2;
+    Vec3 n = first.normal * b0 +
+             second.normal * b1 + third.normal * b2;
+    if (n.getLength() > Vec3::EPSILON) {
+        sample.normal = n.normalize();
+    } else {
+        sample.normal = faceNormal;
+    }
+    double area = computeArea();
+    sample.areaPdf = area > 0.0 ? 1.0 / area : 0.0;
+    return area > 0.0;
 }
 

@@ -1,9 +1,13 @@
 # raytracer
 
-A small C++26 path tracer. Version 1.4 adds adaptive sampling, directional
-and spot lights, light-influence culling counters, and a SIMD AABB prototype.
+A small C++26 path tracer. Version 1.5 adds rounded and lathed geometry,
+Radiance HDR environment maps with importance sampling, PBR texture channels,
+clearcoat materials, and soft directional sunlight.
 
-Adaptive mode is enabled with `--adaptive` and configured with
+Adaptive sampling is enabled by default in the bundled demo and chessboard
+scene files. Use `--no-adaptive` for a fixed-sample render. Other scene files
+can enable it with `adaptiveSampling`, or it can be enabled with `--adaptive`.
+Adaptive sampling is configured with
 `--min-samples`, `--max-samples`, `--adaptive-batch`, `--relative-error`,
 `--absolute-error`, and `--luminance-floor`. Render summaries report actual
 samples traced, average samples per pixel, convergence, and samples saved.
@@ -40,6 +44,12 @@ Render the complete framed chessboard scene with all 32 pieces:
   --bounces 6 --aperture 0.08 --exposure 0.3
 ```
 
+Render the compact realism feature showcase:
+
+```sh
+./build/raytracer realism.png --scene-file scenes/realism-showcase.json
+```
+
 Lens and shutter controls are available through `--aperture`, `--focus`,
 `--shutter-open`, and `--shutter-close`.
 
@@ -51,11 +61,14 @@ same image regardless of worker scheduling.
 Materials can be created with `Material::principled(baseColor, roughness,
 metallic, transmission, ior)`. Legacy `diffuse`, `mirror`, and `dielectric`
 factories remain available. Principled surfaces combine an energy-aware diffuse
-lobe with Cook-Torrance GGX specular reflection and importance sampling.
+lobe with Cook-Torrance GGX specular reflection, optional clearcoat, and
+importance sampling. JSON materials support `baseColorTexture`,
+`roughnessTexture`, `metallicTexture`, and `normalTexture`.
 Emissive spheres and rectangles are automatically registered as area lights.
 Diffuse light and BSDF samples are combined with the power heuristic. A gradient
 environment is built in, and lat-long P6 PPM images can be loaded as environment
-maps.
+maps. Radiance `.hdr` maps retain values above one and use luminance-weighted
+importance sampling.
 
 Finite geometry is automatically placed in a BVH; infinite planes are tested
 separately. Use `--no-bvh` to compare against brute-force traversal. Each render

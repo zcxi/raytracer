@@ -9,6 +9,13 @@
     "maxBounces": 8,
     "russianRouletteStart": 4,
     "tileSize": 16,
+    "adaptiveSampling": true,
+    "adaptiveMinSamples": 16,
+    "adaptiveMaxSamples": 128,
+    "adaptiveBatch": 8,
+    "adaptiveRelativeError": 0.05,
+    "adaptiveAbsoluteError": 0.005,
+    "adaptiveLuminanceFloor": 0.01,
     "exposure": 0.0,
     "toneMapper": "aces"
   },

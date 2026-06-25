@@ -135,3 +135,19 @@ The pre-shadow checks rejected **14,669** light evaluations, avoiding shadow
 rays for **76.4%** of considered lights in this stress scene. Directional
 shadow rays use a finite conservative distance when every scene occluder is
 bounded; scenes containing an infinite plane retain an infinite bound.
+
+## Phase 11 / v1.5 — Realism Feature Smoke Benchmark
+
+Measured June 25, 2026 with GCC 16.1.0 in a Release build using
+`scenes/realism-showcase.json`. The scene contains two 64-segment lathed pieces,
+a rounded-box board, clearcoat materials, texture-driven roughness and normals,
+and an angular-radius directional light.
+
+| Resolution | Adaptive range | Actual average spp | Time |
+| --- | ---: | ---: | ---: |
+| 480×320 | 8–24 spp | 8.9 spp | 0.166 s |
+
+Adaptive sampling traced 1,372,924 primary samples and saved 62.8% of the
+24-spp fixed budget. A one-sample 1280×720 chess-scene smoke render, including
+16 lathed pawns and 64 rounded board squares, completed in 0.365 seconds and
+produced all 203 expected scene objects without missing geometry.

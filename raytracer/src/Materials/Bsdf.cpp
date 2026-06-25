@@ -12,7 +12,14 @@ Vec3 mix(const Vec3& first, const Vec3& second, double amount) {
 }
 
 double specularProbability(const Material& material) {
-    return std::max(0.1, std::min(0.9, 0.25 + 0.65 * material.metallic));
+    return std::max(
+        0.1, std::min(
+            0.95, 0.25 + 0.60 * material.metallic +
+            0.15 * material.clearcoat));
+}
+
+double clearcoatProbability(const Material& material) {
+    return std::clamp(0.2 * material.clearcoat, 0.0, 0.2);
 }
 
 Vec3 tangentFor(const Vec3& normal) {
@@ -89,13 +96,25 @@ Vec3 Bsdf::evaluate(const Material& material,
         (distribution * masking /
          std::max(Vec3::EPSILON, 4.0 * normalView * normalLight));
 
+    const Vec3 clearcoatFresnel =
+        fresnelSchlick(viewHalf, Vec3(0.04, 0.04, 0.04));
+    const double clearcoatDistribution =
+        ggxDistribution(normalHalf, material.clearcoatRoughness);
+    const double clearcoatMasking = smithMasking(
+        normalView, normalLight, material.clearcoatRoughness);
+    const Vec3 clearcoatSpecular = clearcoatFresnel *
+        (material.clearcoat * clearcoatDistribution *
+         clearcoatMasking /
+         std::max(Vec3::EPSILON, 4.0 * normalView * normalLight));
+
     const Vec3 diffuseWeight =
         (Vec3(1.0, 1.0, 1.0) - fresnel) *
         ((1.0 - material.metallic) *
          (1.0 - material.transmission));
     const Vec3 diffuse =
         diffuseWeight.elementwiseMultiply(material.albedo) / PI;
-    return diffuse + specular;
+    return diffuse * (1.0 - 0.25 * material.clearcoat) +
+        specular + clearcoatSpecular;
 }
 
 double Bsdf::pdf(const Material& material,
@@ -117,11 +136,17 @@ double Bsdf::pdf(const Material& material,
     const double specularPdf =
         ggxDistribution(normalHalf, material.roughness) *
         normalHalf / (4.0 * viewHalf);
+    const double clearcoatPdf =
+        ggxDistribution(normalHalf, material.clearcoatRoughness) *
+        normalHalf / (4.0 * viewHalf);
     const double diffusePdf = normalLight / PI;
     const double specularChance = specularProbability(material);
+    const double coatChance = clearcoatProbability(material);
     return (1.0 - material.transmission) *
-        (specularChance * specularPdf +
-         (1.0 - specularChance) * diffusePdf);
+        (coatChance * clearcoatPdf +
+         (1.0 - coatChance) *
+             (specularChance * specularPdf +
+              (1.0 - specularChance) * diffusePdf));
 }
 
 Vec3 Bsdf::cosineHemisphere(
@@ -232,8 +257,13 @@ BsdfSample Bsdf::sample(
         return result;
     }
 
-    const double specularChance = specularProbability(material);
-    if (sampler.next() < specularChance) {
+    const double coatChance = clearcoatProbability(material);
+    const double lobeChoice = sampler.next();
+    if (lobeChoice < coatChance) {
+        const Vec3 halfVector = sampleGgxNormal(
+            normal, material.clearcoatRoughness, sampler);
+        result.direction = reflect(incident, halfVector).normalize();
+    } else if (sampler.next() < specularProbability(material)) {
         const Vec3 halfVector =
             sampleGgxNormal(normal, material.roughness, sampler);
         result.direction = reflect(incident, halfVector).normalize();

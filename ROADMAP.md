@@ -791,7 +791,21 @@ geometrically valid for each light type.
   and render-time changes.
 - SIMD support is optional, benchmark-gated, and never required for correctness.
 
-## Phase 11: Future quality-of-life and platform work
+## Phase 11: High-impact Realism
+
+**Status: completed for v1.5 on June 25, 2026.**
+
+Version 1.5 delivered the highest-impact realism bundle:
+
+- Rounded-box bevel geometry for highlight-catching edges.
+- Smooth lathed profile geometry for chess pieces and turned objects.
+- Radiance HDR environment loading with luminance-weighted importance sampling.
+- Base-color, roughness, metallic, and tangent-space normal texture channels.
+- A clearcoat lobe for lacquered wood, ivory, and painted surfaces.
+- Directional-light angular radius for soft sunlight and penumbrae.
+- A compact `scenes/realism-showcase.json` reference scene.
+
+## Phase 12: Future quality-of-life and platform work
 
 - Explore GPU-accelerated tracing.
 - Add scene editor tooling and live reload.

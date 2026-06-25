@@ -8,6 +8,8 @@
 
 #include "../../Math/Vec3.h"
 
+class Sampler;
+
 enum class LightRejection {
     None,
     Range,
@@ -37,9 +39,12 @@ class LightSource {
         const Vec3& getColor() const;
 
         virtual double getIncidentBrightness(const Vec3 & pos) const = 0;
+        bool sampleIncident(
+            const Vec3& point, const Vec3& surfaceNormal,
+            LightSample& sample) const;
         virtual bool sampleIncident(
             const Vec3& point, const Vec3& surfaceNormal,
-            LightSample& sample) const = 0;
+            Sampler& sampler, LightSample& sample) const = 0;
         virtual bool isFinite() const { return true; }
 
 protected:
