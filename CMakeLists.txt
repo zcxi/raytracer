@@ -42,7 +42,7 @@ set(RAYTRACER_SOURCES
 )
 
 add_library(raytracer_lib ${RAYTRACER_SOURCES})
-target_include_directories(raytracer_lib PUBLIC raytracer/src)
+target_include_directories(raytracer_lib PUBLIC raytracer/src vendor/stb)
 target_link_libraries(raytracer_lib PUBLIC Threads::Threads)
 
 add_executable(raytracer raytracer/src/main.cpp)

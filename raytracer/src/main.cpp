@@ -35,6 +35,9 @@ struct CommandLineOptions {
     double shutterOpen;
     double shutterClose;
     std::string scene;
+    double camX, camY, camZ;
+    double camPitch, camYaw, camRoll;
+    double fov;
 
     CommandLineOptions()
         : outputPath("output.ppm"),
@@ -47,7 +50,10 @@ struct CommandLineOptions {
           focusDistance(58.0),
           shutterOpen(0.0),
           shutterClose(1.0),
-          scene("demo") {
+          scene("demo"),
+          camX(-1), camY(-1), camZ(-1),
+          camPitch(-1), camYaw(-1), camRoll(-1),
+          fov(-1.0) {
     }
 };
 
@@ -95,6 +101,20 @@ std::uint64_t parseSeed(const std::string& value) {
     return parsed;
 }
 
+Vec3 parseVec3(const std::string& value, const std::string& optionName) {
+    std::size_t first = value.find(',');
+    std::size_t second = value.find(',', first + 1);
+    if (first == std::string::npos || second == std::string::npos ||
+        value.find(',', second + 1) != std::string::npos) {
+        throw std::invalid_argument(
+            optionName + " requires three comma-separated numbers.");
+    }
+    return Vec3(
+        std::stod(value.substr(0, first)),
+        std::stod(value.substr(first + 1, second - first - 1)),
+        std::stod(value.substr(second + 1)));
+}
+
 void printUsage() {
     std::cout
         << "Usage: raytracer [output.ppm] [options]\n"
@@ -114,7 +134,10 @@ void printUsage() {
         << "  --focus N         Focus distance (default: 58)\n"
         << "  --shutter-open N  Shutter start time (default: 0)\n"
         << "  --shutter-close N Shutter end time (default: 1)\n"
-        << "  --scene NAME      Scene to render: demo, chessboard (default: demo)\n";
+        << "  --scene NAME      Scene: demo, chessboard (default: demo)\n"
+        << "  --cam-pos X,Y,Z   Camera position (e.g. 8,3,-5)\n"
+        << "  --cam-rot P,Y,R   Camera rotation pitch,yaw,roll in radians\n"
+        << "  --fov N           Vertical field of view in radians\n";
 }
 
 CommandLineOptions parseArguments(int argc, char* argv[]) {
@@ -186,6 +209,18 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
             options.shutterClose = std::stod(value);
         } else if (argument == "--scene") {
             options.scene = value;
+        } else if (argument == "--cam-pos") {
+            Vec3 pos = parseVec3(value, argument);
+            options.camX = pos.X();
+            options.camY = pos.Y();
+            options.camZ = pos.Z();
+        } else if (argument == "--cam-rot") {
+            Vec3 rot = parseVec3(value, argument);
+            options.camPitch = rot.X();
+            options.camYaw = rot.Y();
+            options.camRoll = rot.Z();
+        } else if (argument == "--fov") {
+            options.fov = std::stod(value);
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
@@ -282,8 +317,20 @@ void demo1(const CommandLineOptions& options) {
                       0.82, 0.0, 0.0).withTexture(checker))));
     scene.finalize();
 
-    Camera camera(Vec3(0, 0.1, 0), Vec3(),
-                  640, 640, pi / 6,
+    Vec3 camPos(16, 2, 16);
+    Vec3 camRot(0.06, -0.30, 0.0);
+    if (options.camX >= 0) {
+        camPos = Vec3(options.camX, options.camY, options.camZ);
+    }
+    if (options.camPitch >= 0) {
+        camRot = Vec3(options.camPitch, options.camYaw, options.camRoll);
+    }
+    double fov = pi / 4;
+    if (options.fov > 0) {
+        fov = options.fov;
+    }
+    Camera camera(camPos, camRot,
+                  640, 640, fov,
                   options.aperture, options.focusDistance,
                   options.shutterOpen, options.shutterClose);
     ImageWriter imageWriter(options.outputPath, options.outputSettings);
@@ -294,11 +341,12 @@ void demo1(const CommandLineOptions& options) {
 
 void chessboard(const CommandLineOptions& options) {
     const double pi = 3.14159265358979323846;
-    const double boardCenterZ = -28.0;
+    const double boardZ = -18.0;
+    const double boardY = 1.51;
     Scene scene;
     Environment environment(
-        Vec3(0.02, 0.02, 0.04),
-        Vec3(0.0, 0.0, 0.0),
+        Vec3(0.06, 0.05, 0.06),
+        Vec3(0.18, 0.22, 0.35),
         options.environmentIntensity);
     if (!options.environmentMap.empty() &&
         !environment.loadPpm(
@@ -310,68 +358,143 @@ void chessboard(const CommandLineOptions& options) {
     scene.setEnvironment(environment);
     scene.setAccelerationEnabled(options.accelerationEnabled);
 
+    const Vec3 woodColor(0.25, 0.15, 0.08);
+    scene.addShape(std::unique_ptr<Shape>(
+        new RectangularPrism(
+            Vec3(0, 0.0, boardZ), Vec3(4.6, 1.5, 4.6),
+            Material::principled(woodColor, 0.55, 0.0, 0.0))));
+    const Vec3 legColor(0.18, 0.10, 0.05);
+    auto leg = [&](double lx, double lz) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(lx, -2.5, lz), Vec3(0.3, 1.0, 0.3),
+                Material::principled(legColor, 0.6, 0.0, 0.0))));
+    };
+    leg(-3.8, boardZ - 3.8);
+    leg( 3.8, boardZ - 3.8);
+    leg(-3.8, boardZ + 3.8);
+    leg( 3.8, boardZ + 3.8);
+
     const std::shared_ptr<Texture> checker(
         new CheckerTexture(
-            Vec3(0.92, 0.91, 0.88),
-            Vec3(0.08, 0.08, 0.12), pi * 0.5));
+            Vec3(0.96, 0.94, 0.88),
+            Vec3(0.06, 0.06, 0.10), pi * 0.5));
 
     scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 1, 0), Vec3(0, -0.5, boardCenterZ),
-                  Material::principled(
-                      Vec3(0.5, 0.5, 0.5),
-                      0.65, 0.0, 0.0).withTexture(checker))));
+        new Plane(Vec3(0, 1, 0), Vec3(0, boardY, boardZ),
+                  Material::diffuse(Vec3(0.5, 0.5, 0.5))
+                      .withTexture(checker))));
 
-    const double pieceY = -0.5;
-    auto piece = [&](double x, double z, double radius, double height,
-                     const Vec3& color, double metallic = 0.0) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(Vec3(x, pieceY + radius, z), radius,
-                       Material::principled(
-                           color, 0.35, metallic, 0.0))));
-        (void)height;
+    const double py = boardY;
+    const Vec3 whitePc(0.96, 0.94, 0.88);
+    const Vec3 blackPc(0.06, 0.06, 0.10);
+    auto pieceMat = [](const Vec3& c, double rough = 0.25) {
+        return Material::principled(c, rough, 0.0, 0.0);
     };
 
-    piece(-6, boardCenterZ - 6.5, 0.45, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece(-2, boardCenterZ - 6.5, 0.40, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece( 2, boardCenterZ - 6.5, 0.38, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece( 6, boardCenterZ - 6.5, 0.42, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece(-6, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece(-2, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece( 2, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
-    piece( 6, boardCenterZ - 2.5, 0.35, 0.0, Vec3(0.95, 0.93, 0.85));
+    auto pawn = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, py + 0.35, z), 0.22, pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 0.12, z), Vec3(0.16, 0.12, 0.16),
+                pieceMat(col, 0.4))));
+    };
+    auto rook = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 0.5, z), Vec3(0.20, 0.5, 0.20),
+                pieceMat(col))));
+    };
+    auto knight = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x + 0.08, py + 0.42, z), Vec3(0.22, 0.42, 0.16),
+                pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x + 0.15, py + 0.68, z), 0.16,
+                       pieceMat(col))));
+    };
+    auto bishop = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 0.48, z), Vec3(0.18, 0.48, 0.18),
+                pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, py + 0.80, z), 0.17, pieceMat(col))));
+    };
+    auto queen = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 0.55, z), Vec3(0.22, 0.55, 0.22),
+                pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, py + 0.90, z), 0.20, pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, py + 1.15, z), 0.10, pieceMat(col))));
+    };
+    auto king = [&](double x, double z, const Vec3& col) {
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 0.58, z), Vec3(0.22, 0.58, 0.22),
+                pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new Sphere(Vec3(x, py + 0.93, z), 0.18, pieceMat(col))));
+        scene.addShape(std::unique_ptr<Shape>(
+            new RectangularPrism(
+                Vec3(x, py + 1.12, z), Vec3(0.06, 0.10, 0.22),
+                pieceMat(col, 0.3))));
+    };
 
-    piece(-6, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece(-2, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece( 2, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece( 6, boardCenterZ + 2.5, 0.35, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece(-6, boardCenterZ + 6.5, 0.45, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece(-2, boardCenterZ + 6.5, 0.40, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece( 2, boardCenterZ + 6.5, 0.38, 0.0, Vec3(0.04, 0.04, 0.08));
-    piece( 6, boardCenterZ + 6.5, 0.42, 0.0, Vec3(0.04, 0.04, 0.08));
+    auto placeBackRow = [&](double z, const Vec3& col) {
+        rook(-3.5, z, col);
+        knight(-2.5, z, col);
+        bishop(-1.5, z, col);
+        queen(-0.5, z, col);
+        king(0.5, z, col);
+        bishop(1.5, z, col);
+        knight(2.5, z, col);
+        rook(3.5, z, col);
+    };
+    auto placePawns = [&](double z, const Vec3& col) {
+        for (int i = 0; i < 8; ++i)
+            pawn(-3.5 + i, z, col);
+    };
+
+    placeBackRow(boardZ - 3.5, blackPc);
+    placePawns(boardZ - 2.5, blackPc);
+    placePawns(boardZ + 2.5, whitePc);
+    placeBackRow(boardZ + 3.5, whitePc);
 
     scene.addShape(std::unique_ptr<Shape>(
         new Rectangle(
-            Vec3(0, 8, boardCenterZ), Vec3(0, -1, 0),
-            Vec3(0, 0, -1), 14, 3,
+            Vec3(0, 9, boardZ + 2), Vec3(0, -1, 0),
+            Vec3(0, 0, -1), 8, 3,
             Material::diffuse(
                 Vec3(0.0, 0.0, 0.0),
-                Vec3(12.0, 11.0, 9.0)))));
-
+                Vec3(14.0, 12.0, 9.0)))));
     scene.addShape(std::unique_ptr<Shape>(
-        new Sphere(Vec3(8, 3, boardCenterZ + 8), 2.0,
-                   Material::principled(
-                       Vec3(0.92, 0.95, 1.0),
-                       0.08, 1.0, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Sphere(Vec3(-8, 2.2, boardCenterZ + 7), 1.8,
-                   Material::principled(
-                       Vec3(0.98, 0.99, 1.0),
-                       0.03, 0.0, 1.0, 1.5))));
+        new Plane(Vec3(0, 0, -1), Vec3(0, 0, boardZ + 8),
+                  Material::principled(
+                      Vec3(0.55, 0.50, 0.45),
+                      0.88, 0.0, 0.0))));
 
     scene.finalize();
 
-    Camera camera(Vec3(5, 3.5, 0), Vec3(-0.14, 0.17, 0.03),
-                  800, 600, pi / 5,
+    Vec3 camPos(8, 5, 3);
+    Vec3 camRot(-0.22, 0.22, 0.0);
+    if (options.camX >= 0) {
+        camPos = Vec3(options.camX, options.camY, options.camZ);
+    }
+    if (options.camPitch >= 0) {
+        camRot = Vec3(options.camPitch, options.camYaw, options.camRoll);
+    }
+    double fov = pi / 4;
+    if (options.fov > 0) {
+        fov = options.fov;
+    }
+    Camera camera(camPos, camRot,
+                  800, 600, fov,
                   options.aperture, options.focusDistance,
                   options.shutterOpen, options.shutterClose);
     ImageWriter imageWriter(options.outputPath, options.outputSettings);

@@ -344,3 +344,10 @@ healthchecksdb
 # Project Files
 *.sln
 *.vcx*
+
+# Render outputs
+*.ppm
+*.png
+*.jpg
+*.jpeg
+benchmark-grid.obj

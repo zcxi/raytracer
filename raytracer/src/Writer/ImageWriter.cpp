@@ -5,7 +5,22 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <vector>
 #include "ImageWriter.h"
+
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
+namespace {
+
+void stbiWriteCallback(void* context, void* data, int size) {
+    std::ofstream* file = static_cast<std::ofstream*>(context);
+    file->write(static_cast<const char*>(data), size);
+}
+
+} // namespace
 
 double ImageWriter::applyExposure(double linearValue, double exposure) {
     return std::max(0.0, linearValue) * std::pow(2.0, exposure);
@@ -59,6 +74,13 @@ bool ImageWriter::writeAccumulation(
         accumulation, static_cast<double>(completedSamples));
 }
 
+static bool hasExtension(const std::string& path, const char* ext) {
+    const std::size_t pathLen = path.size();
+    const std::size_t extLen = std::strlen(ext);
+    if (pathLen < extLen + 1) return false;
+    return path.compare(pathLen - extLen, extLen, ext) == 0;
+}
+
 bool ImageWriter::writeScaled(
         const std::vector<std::vector<Vec3>>& image,
         double divisor) const {
@@ -66,12 +88,38 @@ bool ImageWriter::writeScaled(
         return false;
     }
 
-    const std::size_t width = image.front().size();
-    const std::size_t height = image.size();
+    const int width = static_cast<int>(image.front().size());
+    const int height = static_cast<int>(image.size());
     for (const auto& row : image) {
-        if (row.size() != width) {
+        if (row.size() != static_cast<std::size_t>(width)) {
             return false;
         }
+    }
+
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width) * height * 3);
+    for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+            const Vec3& pixel = image[row][col];
+            const std::size_t idx =
+                (static_cast<std::size_t>(row) * width + col) * 3;
+            pixels[idx + 0] = toByte(
+                pixel.X() / divisor, settings.exposure, settings.toneMapper);
+            pixels[idx + 1] = toByte(
+                pixel.Y() / divisor, settings.exposure, settings.toneMapper);
+            pixels[idx + 2] = toByte(
+                pixel.Z() / divisor, settings.exposure, settings.toneMapper);
+        }
+    }
+
+    if (hasExtension(outputPath, ".png")) {
+        return stbi_write_png(
+            outputPath.c_str(), width, height, 3, pixels.data(),
+            width * 3) != 0;
+    }
+    if (hasExtension(outputPath, ".jpg") || hasExtension(outputPath, ".jpeg")) {
+        return stbi_write_jpg(
+            outputPath.c_str(), width, height, 3, pixels.data(), 92) != 0;
     }
 
     std::ofstream ofs(outputPath.c_str(), std::ios::out | std::ios::binary);
@@ -79,21 +127,7 @@ bool ImageWriter::writeScaled(
         return false;
     }
     ofs << "P6\n" << width << " " << height << "\n255\n";
-
-    for (std::size_t row = 0; row < height; ++row) {
-        for (std::size_t column = 0; column < width; ++column) {
-            const Vec3& pixel = image[row][column];
-            const unsigned char bytes[3] = {
-                toByte(pixel.X() / divisor,
-                       settings.exposure, settings.toneMapper),
-                toByte(pixel.Y() / divisor,
-                       settings.exposure, settings.toneMapper),
-                toByte(pixel.Z() / divisor,
-                       settings.exposure, settings.toneMapper)
-            };
-            ofs.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
-        }
-    }
-
+    ofs.write(reinterpret_cast<const char*>(pixels.data()),
+              static_cast<std::streamsize>(pixels.size()));
     return static_cast<bool>(ofs);
 }
