@@ -1,78 +1,71 @@
-#include <iostream>
-#include <cstdlib>
-#include <cstdint>
+#include "Renderer.h"
+#include "SceneDescription/JsonSceneLoader.h"
+#include "Writer/ImageWriter.h"
+
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
 #include <limits>
-#include <memory>
 #include <stdexcept>
 #include <string>
-#include "Scene/Scene.h"
-#include "Shapes/Sphere.h"
-#include "Writer/ImageWriter.h"
-#include "Scene/Light/PointSource.h"
-#include "Renderer.h"
-#include "Shapes/Cube.h"
-#include "Shapes/Plane.h"
-#include "Shapes/Pyramid.h"
-#include "Shapes/Rectangle.h"
-#include "Shapes/RectangularPrism.h"
-#include "Shapes/MovingSphere.h"
-#include "Shapes/ObjMesh.h"
-#include "Shapes/Transform.h"
-#include "Textures/Texture.h"
 
 namespace {
 
 struct CommandLineOptions {
     std::string outputPath;
-    RenderSettings renderSettings;
-    ImageOutputSettings outputSettings;
+    std::string sceneFile;
+    std::string validateFile;
     std::string environmentMap;
-    double environmentIntensity;
-    bool accelerationEnabled;
-    double aperture;
-    double focusDistance;
-    double shutterOpen;
-    double shutterClose;
-    std::string scene;
-    double camX, camY, camZ;
-    double camPitch, camYaw, camRoll;
-    double fov;
-
-    CommandLineOptions()
-        : outputPath("output.ppm"),
-          renderSettings(32, 8, 1, 0, 8, 4),
-          outputSettings(0.0, ToneMapper::Aces),
-          environmentMap(),
-          environmentIntensity(1.0),
-          accelerationEnabled(true),
-          aperture(0.35),
-          focusDistance(58.0),
-          shutterOpen(0.0),
-          shutterClose(1.0),
-          scene("demo"),
-          camX(-1), camY(-1), camZ(-1),
-          camPitch(-1), camYaw(-1), camRoll(-1),
-          fov(-1.0) {
-    }
+    bool hasOutputPath = false;
+    bool samples = false;
+    bool preview = false;
+    bool seed = false;
+    bool workers = false;
+    bool bounces = false;
+    bool roulette = false;
+    bool tileSize = false;
+    bool statistics = false;
+    bool acceleration = false;
+    bool exposure = false;
+    bool toneMapper = false;
+    bool environmentIntensity = false;
+    bool aperture = false;
+    bool focusDistance = false;
+    bool shutterOpen = false;
+    bool shutterClose = false;
+    bool cameraPosition = false;
+    bool cameraRotation = false;
+    bool fov = false;
+    bool adaptiveMinSamples = false;
+    bool adaptiveMaxSamples = false;
+    bool adaptiveRelativeError = false;
+    bool adaptiveAbsoluteError = false;
+    bool adaptiveLuminanceFloor = false;
+    bool adaptiveBatch = false;
+    RenderSettings render;
+    ImageOutputSettings output;
+    double envIntensity = 1.0;
+    Vec3 camPosition;
+    Vec3 camRotation;
+    double apertureValue = 0.0;
+    double focusValue = 1.0;
+    double shutterOpenValue = 0.0;
+    double shutterCloseValue = 0.0;
+    double fovValue = 0.0;
 };
 
 ToneMapper parseToneMapper(const std::string& value) {
-    if (value == "none") {
-        return ToneMapper::None;
-    }
-    if (value == "reinhard") {
-        return ToneMapper::Reinhard;
-    }
-    if (value == "aces") {
-        return ToneMapper::Aces;
-    }
+    if (value == "none") return ToneMapper::None;
+    if (value == "reinhard") return ToneMapper::Reinhard;
+    if (value == "aces") return ToneMapper::Aces;
     throw std::invalid_argument(
         "Tone mapper must be none, reinhard, or aces.");
 }
 
-unsigned int parseUnsigned(const std::string& value,
-                           const std::string& optionName) {
+unsigned int parseUnsigned(
+        const std::string& value, const std::string& optionName) {
     if (value.empty() || value[0] == '-') {
         throw std::invalid_argument(
             optionName + " requires a non-negative integer.");
@@ -101,53 +94,106 @@ std::uint64_t parseSeed(const std::string& value) {
     return parsed;
 }
 
-Vec3 parseVec3(const std::string& value, const std::string& optionName) {
-    std::size_t first = value.find(',');
-    std::size_t second = value.find(',', first + 1);
+double parseDouble(
+        const std::string& value, const std::string& optionName) {
+    std::size_t parsedCharacters = 0;
+    const double parsed = std::stod(value, &parsedCharacters);
+    if (parsedCharacters != value.size() || !std::isfinite(parsed)) {
+        throw std::invalid_argument(
+            optionName + " requires a finite number.");
+    }
+    return parsed;
+}
+
+Vec3 parseVec3(
+        const std::string& value, const std::string& optionName) {
+    const std::size_t first = value.find(',');
+    const std::size_t second = value.find(',', first + 1);
     if (first == std::string::npos || second == std::string::npos ||
         value.find(',', second + 1) != std::string::npos) {
         throw std::invalid_argument(
             optionName + " requires three comma-separated numbers.");
     }
     return Vec3(
-        std::stod(value.substr(0, first)),
-        std::stod(value.substr(first + 1, second - first - 1)),
-        std::stod(value.substr(second + 1)));
+        parseDouble(value.substr(0, first), optionName),
+        parseDouble(
+            value.substr(first + 1, second - first - 1), optionName),
+        parseDouble(value.substr(second + 1), optionName));
+}
+
+std::string executableDirectory(const char* executable) {
+    const std::filesystem::path path =
+        std::filesystem::absolute(executable);
+    return path.has_parent_path()
+        ? path.parent_path().string()
+        : std::filesystem::current_path().string();
+}
+
+std::string bundledScene(
+        const std::string& name, const char* executable) {
+    const std::string filename =
+        name == "demo" ? "demo.json" :
+        name == "chessboard" ? "chessboard.json" : std::string();
+    if (filename.empty()) {
+        throw std::invalid_argument(
+            "--scene must be demo or chessboard.");
+    }
+    const std::filesystem::path current =
+        std::filesystem::current_path() / "scenes" / filename;
+    if (std::filesystem::exists(current)) {
+        return current.string();
+    }
+    const std::filesystem::path besideExecutable =
+        std::filesystem::path(executableDirectory(executable))
+            .parent_path() / "scenes" / filename;
+    return besideExecutable.string();
 }
 
 void printUsage() {
     std::cout
-        << "Usage: raytracer [output.ppm] [options]\n"
-        << "  --samples N       Samples per pixel (default: 16)\n"
-        << "  --exposure EV     Exposure in stops (default: 0)\n"
-        << "  --tone-map NAME   none, reinhard, or aces (default: aces)\n"
-        << "  --preview N       Rewrite output every N samples (default: 4)\n"
-        << "  --seed N          Deterministic sampling seed (default: 1)\n"
+        << "Usage: raytracer [output] [options]\n"
+        << "  --scene-file FILE Load a versioned JSON scene\n"
+        << "  --validate-scene FILE  Validate without rendering\n"
+        << "  --scene NAME      Compatibility alias: demo or chessboard\n"
+        << "  --samples N       Override samples per pixel\n"
+        << "  --preview N       Override preview interval\n"
+        << "  --seed N          Override deterministic seed\n"
         << "  --threads N       Worker count; 0 uses hardware concurrency\n"
-        << "  --bounces N       Maximum path depth (default: 8)\n"
-        << "  --rr-start N      Russian roulette start bounce (default: 4)\n"
-        << "  --tile-size N     Square render tile size (default: 16)\n"
-        << "  --env-map PATH    Lat-long P6 PPM environment map\n"
-        << "  --env-intensity N Environment multiplier (default: 1)\n"
-        << "  --no-bvh          Disable BVH for diagnostics/benchmarking\n"
+        << "  --bounces N       Override maximum path depth\n"
+        << "  --rr-start N      Override Russian roulette start\n"
+        << "  --tile-size N     Override square tile size\n"
+        << "  --exposure EV     Override exposure in stops\n"
+        << "  --tone-map NAME   none, reinhard, or aces\n"
+        << "  --env-map PATH    Override environment map\n"
+        << "  --env-intensity N Override environment intensity\n"
+        << "  --no-bvh          Disable BVH for diagnostics\n"
         << "  --stats           Collect detailed tracing counters\n"
-        << "  --aperture N      Lens aperture diameter (default: 0.35)\n"
-        << "  --focus N         Focus distance (default: 58)\n"
-        << "  --shutter-open N  Shutter start time (default: 0)\n"
-        << "  --shutter-close N Shutter end time (default: 1)\n"
-        << "  --scene NAME      Scene: demo, chessboard (default: demo)\n"
-        << "  --cam-pos X,Y,Z   Camera position (e.g. 8,3,-5)\n"
-        << "  --cam-rot P,Y,R   Camera rotation pitch,yaw,roll in radians\n"
-        << "  --fov N           Vertical field of view in radians\n";
+        << "  --aperture N      Override lens aperture diameter\n"
+        << "  --focus N         Override focus distance\n"
+        << "  --shutter-open N  Override shutter start time\n"
+        << "  --shutter-close N Override shutter end time\n"
+        << "  --cam-pos X,Y,Z   Override camera position\n"
+        << "  --cam-rot P,Y,R   Override camera Euler rotation\n"
+        << "  --fov N           Override vertical field of view\n"
+        << "  --adaptive        Enable adaptive sampling\n"
+        << "  --min-samples N   Min samples per pixel for adaptive\n"
+        << "  --max-samples N   Max samples per pixel for adaptive\n"
+        << "  --adaptive-batch N  Samples between convergence checks\n"
+        << "  --relative-error N  Relative error threshold (default 0.05)\n"
+        << "  --absolute-error N  Absolute error threshold (default 0.005)\n"
+        << "  --luminance-floor N Luminance floor for relative error\n"
+        << "  --denoise         Enable a-trous denoising\n";
 }
 
-CommandLineOptions parseArguments(int argc, char* argv[]) {
+CommandLineOptions parseArguments(
+        int argc, char* argv[]) {
     CommandLineOptions options;
+    std::string sceneAlias = "demo";
     int index = 1;
     if (index < argc && argv[index][0] != '-') {
         options.outputPath = argv[index++];
+        options.hasOutputPath = true;
     }
-
     while (index < argc) {
         const std::string argument = argv[index++];
         if (argument == "--help") {
@@ -155,11 +201,11 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
             std::exit(0);
         }
         if (argument == "--no-bvh") {
-            options.accelerationEnabled = false;
+            options.acceleration = true;
             continue;
         }
         if (argument == "--stats") {
-            options.renderSettings.collectStats = true;
+            options.statistics = true;
             continue;
         }
         if (index >= argc) {
@@ -167,471 +213,206 @@ CommandLineOptions parseArguments(int argc, char* argv[]) {
                 "Missing value for option " + argument + ".");
         }
         const std::string value = argv[index++];
-        if (argument == "--samples") {
-            options.renderSettings.samplesPerPixel =
+        if (argument == "--scene-file") {
+            options.sceneFile = value;
+        } else if (argument == "--validate-scene") {
+            options.validateFile = value;
+        } else if (argument == "--scene") {
+            sceneAlias = value;
+        } else if (argument == "--samples") {
+            options.render.samplesPerPixel =
                 parseUnsigned(value, argument);
-        } else if (argument == "--exposure") {
-            options.outputSettings.exposure = std::stod(value);
-            if (!std::isfinite(options.outputSettings.exposure)) {
-                throw std::invalid_argument(
-                    "--exposure requires a finite number.");
-            }
-        } else if (argument == "--tone-map") {
-            options.outputSettings.toneMapper = parseToneMapper(value);
+            options.samples = true;
         } else if (argument == "--preview") {
-            options.renderSettings.previewInterval =
+            options.render.previewInterval =
                 parseUnsigned(value, argument);
+            options.preview = true;
         } else if (argument == "--seed") {
-            options.renderSettings.randomSeed = parseSeed(value);
+            options.render.randomSeed = parseSeed(value);
+            options.seed = true;
         } else if (argument == "--threads") {
-            options.renderSettings.workerCount =
-                parseUnsigned(value, argument);
+            options.render.workerCount = parseUnsigned(value, argument);
+            options.workers = true;
         } else if (argument == "--bounces") {
-            options.renderSettings.maxBounces =
-                parseUnsigned(value, argument);
+            options.render.maxBounces = parseUnsigned(value, argument);
+            options.bounces = true;
         } else if (argument == "--rr-start") {
-            options.renderSettings.russianRouletteStart =
+            options.render.russianRouletteStart =
                 parseUnsigned(value, argument);
+            options.roulette = true;
         } else if (argument == "--tile-size") {
-            options.renderSettings.tileSize =
-                parseUnsigned(value, argument);
+            options.render.tileSize = parseUnsigned(value, argument);
+            options.tileSize = true;
+        } else if (argument == "--exposure") {
+            options.output.exposure = parseDouble(value, argument);
+            options.exposure = true;
+        } else if (argument == "--tone-map") {
+            options.output.toneMapper = parseToneMapper(value);
+            options.toneMapper = true;
         } else if (argument == "--env-map") {
             options.environmentMap = value;
         } else if (argument == "--env-intensity") {
-            options.environmentIntensity = std::stod(value);
-            if (!std::isfinite(options.environmentIntensity) ||
-                options.environmentIntensity < 0.0) {
-                throw std::invalid_argument(
-                    "--env-intensity requires a finite non-negative number.");
-            }
+            options.envIntensity = parseDouble(value, argument);
+            options.environmentIntensity = true;
         } else if (argument == "--aperture") {
-            options.aperture = std::stod(value);
+            options.apertureValue = parseDouble(value, argument);
+            options.aperture = true;
         } else if (argument == "--focus") {
-            options.focusDistance = std::stod(value);
+            options.focusValue = parseDouble(value, argument);
+            options.focusDistance = true;
         } else if (argument == "--shutter-open") {
-            options.shutterOpen = std::stod(value);
+            options.shutterOpenValue = parseDouble(value, argument);
+            options.shutterOpen = true;
         } else if (argument == "--shutter-close") {
-            options.shutterClose = std::stod(value);
-        } else if (argument == "--scene") {
-            options.scene = value;
+            options.shutterCloseValue = parseDouble(value, argument);
+            options.shutterClose = true;
         } else if (argument == "--cam-pos") {
-            Vec3 pos = parseVec3(value, argument);
-            options.camX = pos.X();
-            options.camY = pos.Y();
-            options.camZ = pos.Z();
+            options.camPosition = parseVec3(value, argument);
+            options.cameraPosition = true;
         } else if (argument == "--cam-rot") {
-            Vec3 rot = parseVec3(value, argument);
-            options.camPitch = rot.X();
-            options.camYaw = rot.Y();
-            options.camRoll = rot.Z();
+            options.camRotation = parseVec3(value, argument);
+            options.cameraRotation = true;
         } else if (argument == "--fov") {
-            options.fov = std::stod(value);
+            options.fovValue = parseDouble(value, argument);
+            options.fov = true;
+        } else if (argument == "--adaptive") {
+            options.render.adaptiveSampling = true;
+            index--;
+        } else if (argument == "--min-samples") {
+            options.render.adaptiveMinSamples =
+                parseUnsigned(value, argument);
+            options.adaptiveMinSamples = true;
+        } else if (argument == "--max-samples") {
+            options.render.adaptiveMaxSamples =
+                parseUnsigned(value, argument);
+            options.adaptiveMaxSamples = true;
+        } else if (argument == "--adaptive-batch") {
+            options.render.adaptiveBatch =
+                parseUnsigned(value, argument);
+            options.adaptiveBatch = true;
+        } else if (argument == "--relative-error") {
+            options.render.adaptiveRelativeError =
+                parseDouble(value, argument);
+            options.adaptiveRelativeError = true;
+        } else if (argument == "--absolute-error") {
+            options.render.adaptiveAbsoluteError =
+                parseDouble(value, argument);
+            options.adaptiveAbsoluteError = true;
+        } else if (argument == "--luminance-floor") {
+            options.render.adaptiveLuminanceFloor =
+                parseDouble(value, argument);
+            options.adaptiveLuminanceFloor = true;
+        } else if (argument == "--denoise") {
+            options.render.denoise.enabled = true;
+            index--;
         } else {
             throw std::invalid_argument("Unknown option " + argument + ".");
         }
     }
-    if (options.renderSettings.samplesPerPixel == 0) {
-        throw std::invalid_argument("Samples per pixel must be positive.");
-    }
-    if (options.renderSettings.maxBounces == 0) {
-        throw std::invalid_argument("Maximum bounces must be positive.");
-    }
-    if (options.renderSettings.tileSize == 0) {
-        throw std::invalid_argument("Tile size must be positive.");
-    }
-    if (options.aperture < 0.0 || options.focusDistance <= 0.0 ||
-        options.shutterClose < options.shutterOpen) {
-        throw std::invalid_argument("Invalid camera lens or shutter options.");
+    if (options.sceneFile.empty() && options.validateFile.empty()) {
+        options.sceneFile = bundledScene(sceneAlias, argv[0]);
     }
     return options;
 }
 
-void demo1(const CommandLineOptions& options) {
-    const double pi = 3.14159265358979323846;
-    Scene scene;
-    Environment environment(
-        Vec3(0.08, 0.06, 0.05),
-        Vec3(0.12, 0.2, 0.42),
-        options.environmentIntensity);
-    if (!options.environmentMap.empty() &&
-        !environment.loadPpm(
-            options.environmentMap, options.environmentIntensity)) {
-        throw std::runtime_error(
-            "Failed to load environment map " +
-            options.environmentMap + ".");
+void applyOverrides(
+        LoadedScene& loaded, const CommandLineOptions& options) {
+    if (options.samples) {
+        loaded.renderSettings.samplesPerPixel =
+            options.render.samplesPerPixel;
     }
-    scene.setEnvironment(environment);
-    scene.setAccelerationEnabled(options.accelerationEnabled);
-    const std::shared_ptr<Texture> checker(
-        new CheckerTexture(
-            Vec3(0.12, 0.04, 0.03),
-            Vec3(0.55, 0.22, 0.12), 0.35));
-
-    scene.addShape(std::unique_ptr<Shape>(
-        new Sphere(Vec3(-7, 7, -58), 4.0,
-                   Material::principled(
-                       Vec3(0.92, 0.95, 1.0),
-                       0.08, 1.0, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(7, 7, -58), Vec3(10, 6, 5),
-            Material::principled(
-                Vec3(0.08, 0.65, 0.18),
-                0.38, 0.0, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Sphere(Vec3(-7, -7, -58), 4,
-                   Material::principled(
-                       Vec3(0.98, 0.99, 1.0),
-                       0.03, 0.0, 1.0, 1.5))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Pyramid(Vec3(7, -11, -59), 10, 7, 10,
-                    Material::principled(
-                        Vec3(1.0, 0.58, 0.08),
-                        0.22, 0.9, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new MovingSphere(
-            Vec3(-1.5, -1.0, -52), Vec3(1.5, -1.0, -52),
-            0.0, 1.0, 1.2,
-            Material::principled(
-                Vec3(0.85, 0.15, 0.08), 0.3, 0.0, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Transform(
-            std::unique_ptr<Shape>(
-                new ObjMesh(
-                    "assets/demo.obj",
-                    Material::principled(
-                        Vec3(0.2, 0.45, 0.95), 0.25, 0.35, 0.0))),
-            Vec3(0, 1, -55), Vec3(0.2, 0.5, 0.15),
-            Vec3(1.5, 1.5, 1.5))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Sphere(Vec3(0, 14, -59), 2.0,
-                   Material::diffuse(
-                       Vec3(0.0, 0.0, 0.0),
-                       Vec3(10.0, 7.0, 3.0)))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Rectangle(
-            Vec3(0, -17, -54), Vec3(0, 1, 0),
-            Vec3(0, 0, -1), 18, 7,
-            Material::diffuse(
-                Vec3(0.0, 0.0, 0.0),
-                Vec3(4.0, 5.0, 8.0)))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 0, -1), Vec3(0, 0, -64),
-                  Material::principled(
-                      Vec3(0.5, 0.16, 0.12),
-                      0.82, 0.0, 0.0).withTexture(checker))));
-    scene.finalize();
-
-    Vec3 camPos(16, 2, 16);
-    Vec3 camRot(0.06, -0.30, 0.0);
-    if (options.camX >= 0) {
-        camPos = Vec3(options.camX, options.camY, options.camZ);
+    if (options.preview) {
+        loaded.renderSettings.previewInterval =
+            options.render.previewInterval;
     }
-    if (options.camPitch >= 0) {
-        camRot = Vec3(options.camPitch, options.camYaw, options.camRoll);
+    if (options.seed) {
+        loaded.renderSettings.randomSeed = options.render.randomSeed;
     }
-    double fov = pi / 4;
-    if (options.fov > 0) {
-        fov = options.fov;
+    if (options.workers) {
+        loaded.renderSettings.workerCount = options.render.workerCount;
     }
-    Camera camera(camPos, camRot,
-                  640, 640, fov,
-                  options.aperture, options.focusDistance,
-                  options.shutterOpen, options.shutterClose);
-    ImageWriter imageWriter(options.outputPath, options.outputSettings);
-    Renderer render(
-        imageWriter, scene, camera, options.renderSettings);
-    render.render();
-}
-
-void chessboard(const CommandLineOptions& options) {
-    const double pi = 3.14159265358979323846;
-    const double boardZ = -18.0;
-    const double boardTop = 0.42;
-    Scene scene;
-    Environment environment(
-        Vec3(0.035, 0.025, 0.02),
-        Vec3(0.16, 0.20, 0.32),
-        options.environmentIntensity);
-    if (!options.environmentMap.empty() &&
-        !environment.loadPpm(
-            options.environmentMap, options.environmentIntensity)) {
-        throw std::runtime_error(
-            "Failed to load environment map " +
-            options.environmentMap + ".");
+    if (options.bounces) {
+        loaded.renderSettings.maxBounces = options.render.maxBounces;
     }
-    scene.setEnvironment(environment);
-    scene.setAccelerationEnabled(options.accelerationEnabled);
-
-    const Material boardWood = Material::principled(
-        Vec3(0.25, 0.095, 0.035), 0.42, 0.0, 0.0);
-    const Material darkWood = Material::principled(
-        Vec3(0.09, 0.025, 0.012), 0.5, 0.0, 0.0);
-    const Material lightSquare = Material::principled(
-        Vec3(0.78, 0.58, 0.31), 0.5, 0.0, 0.0);
-    const Material darkSquare = Material::principled(
-        Vec3(0.19, 0.055, 0.025), 0.46, 0.0, 0.0);
-
-    // Solid board, inset playing squares, and raised frame.
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(0, 0.0, boardZ), Vec3(9.4, 0.75, 9.4),
-            boardWood)));
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(0, -0.43, boardZ), Vec3(8.7, 0.14, 8.7),
-            darkWood)));
-    for (int rank = 0; rank < 8; ++rank) {
-        for (int file = 0; file < 8; ++file) {
-            const double x = static_cast<double>(file) - 3.5;
-            const double z = boardZ +
-                static_cast<double>(rank) - 3.5;
-            scene.addShape(std::unique_ptr<Shape>(
-                new RectangularPrism(
-                    Vec3(x, boardTop, z),
-                    Vec3(0.96, 0.08, 0.96),
-                    ((file + rank) % 2 == 0)
-                        ? lightSquare : darkSquare)));
+    if (options.roulette) {
+        loaded.renderSettings.russianRouletteStart =
+            options.render.russianRouletteStart;
+    }
+    if (options.tileSize) {
+        loaded.renderSettings.tileSize = options.render.tileSize;
+    }
+    if (options.statistics) {
+        loaded.renderSettings.collectStats = true;
+    }
+    if (options.render.adaptiveSampling) {
+        loaded.renderSettings.adaptiveSampling = true;
+    }
+    if (options.adaptiveMinSamples) {
+        loaded.renderSettings.adaptiveMinSamples =
+            options.render.adaptiveMinSamples;
+    }
+    if (options.adaptiveMaxSamples) {
+        loaded.renderSettings.adaptiveMaxSamples =
+            options.render.adaptiveMaxSamples;
+    }
+    if (options.adaptiveBatch) {
+        loaded.renderSettings.adaptiveBatch =
+            options.render.adaptiveBatch;
+    }
+    if (options.adaptiveRelativeError) {
+        loaded.renderSettings.adaptiveRelativeError =
+            options.render.adaptiveRelativeError;
+    }
+    if (options.adaptiveAbsoluteError) {
+        loaded.renderSettings.adaptiveAbsoluteError =
+            options.render.adaptiveAbsoluteError;
+    }
+    if (options.adaptiveLuminanceFloor) {
+        loaded.renderSettings.adaptiveLuminanceFloor =
+            options.render.adaptiveLuminanceFloor;
+    }
+    if (options.render.denoise.enabled) {
+        loaded.renderSettings.denoise.enabled = true;
+    }
+    if (options.exposure) {
+        loaded.outputSettings.exposure = options.output.exposure;
+    }
+    if (options.toneMapper) {
+        loaded.outputSettings.toneMapper = options.output.toneMapper;
+    }
+    if (options.hasOutputPath) {
+        loaded.outputPath = options.outputPath;
+    }
+    loaded.scene->setAccelerationEnabled(!options.acceleration);
+    if (options.environmentIntensity) {
+        loaded.scene->setEnvironmentIntensity(options.envIntensity);
+    }
+    if (!options.environmentMap.empty()) {
+        const double intensity = options.environmentIntensity
+            ? options.envIntensity : 1.0;
+        if (!loaded.scene->loadEnvironmentMap(
+                options.environmentMap, intensity)) {
+            throw std::runtime_error(
+                "Failed to load environment map " +
+                options.environmentMap + ".");
         }
     }
-    const double frameY = boardTop + 0.07;
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(0, frameY, boardZ - 4.18),
-            Vec3(9.25, 0.18, 0.30), darkWood)));
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(0, frameY, boardZ + 4.18),
-            Vec3(9.25, 0.18, 0.30), darkWood)));
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(-4.18, frameY, boardZ),
-            Vec3(0.30, 0.18, 8.65), darkWood)));
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(4.18, frameY, boardZ),
-            Vec3(0.30, 0.18, 8.65), darkWood)));
 
-    // A compact display table grounds the board without hiding the pieces.
-    scene.addShape(std::unique_ptr<Shape>(
-        new RectangularPrism(
-            Vec3(0, -0.72, boardZ), Vec3(10.2, 0.22, 10.2),
-            darkWood)));
-    auto leg = [&](double x, double z) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(
-                Vec3(x, -2.7, z), Vec3(0.48, 3.8, 0.48),
-                darkWood)));
-    };
-    leg(-4.25, boardZ - 4.25);
-    leg(4.25, boardZ - 4.25);
-    leg(-4.25, boardZ + 4.25);
-    leg(4.25, boardZ + 4.25);
-
-    const double pieceY = boardTop + 0.08;
-    const Material whitePiece = Material::principled(
-        Vec3(0.92, 0.84, 0.66), 0.18, 0.0, 0.0);
-    const Material blackPiece = Material::principled(
-        Vec3(0.025, 0.018, 0.014), 0.13, 0.08, 0.0);
-
-    auto addPrism = [&](const Vec3& center, const Vec3& size,
-                        const Material& material) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new RectangularPrism(center, size, material)));
-    };
-    auto addSphere = [&](const Vec3& center, double radius,
-                         const Material& material) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new Sphere(center, radius, material)));
-    };
-    auto addEllipsoid = [&](const Vec3& center, const Vec3& scale,
-                            const Material& material) {
-        scene.addShape(std::unique_ptr<Shape>(
-            new Transform(
-                std::unique_ptr<Shape>(
-                    new Sphere(Vec3(), 1.0, material)),
-                center, Vec3(), scale)));
-    };
-    auto addBase = [&](double x, double z, const Material& material,
-                       double scale = 1.0) {
-        addEllipsoid(
-            Vec3(x, pieceY + 0.08 * scale, z),
-            Vec3(0.38 * scale, 0.10 * scale, 0.38 * scale),
-            material);
-        addPrism(
-            Vec3(x, pieceY + 0.18 * scale, z),
-            Vec3(0.42 * scale, 0.10 * scale, 0.42 * scale),
-            material);
-    };
-
-    auto pawn = [&](double x, double z, const Material& material) {
-        addBase(x, z, material, 0.82);
-        addPrism(
-            Vec3(x, pieceY + 0.37, z),
-            Vec3(0.20, 0.33, 0.20), material);
-        addEllipsoid(
-            Vec3(x, pieceY + 0.53, z),
-            Vec3(0.25, 0.12, 0.25), material);
-        addSphere(Vec3(x, pieceY + 0.70, z), 0.20, material);
-    };
-    auto rook = [&](double x, double z, const Material& material) {
-        addBase(x, z, material);
-        addPrism(
-            Vec3(x, pieceY + 0.48, z),
-            Vec3(0.33, 0.55, 0.33), material);
-        addPrism(
-            Vec3(x, pieceY + 0.78, z),
-            Vec3(0.58, 0.14, 0.58), material);
-        const double offset = 0.20;
-        for (int sx = -1; sx <= 1; sx += 2) {
-            for (int sz = -1; sz <= 1; sz += 2) {
-                addPrism(
-                    Vec3(x + sx * offset, pieceY + 0.91,
-                         z + sz * offset),
-                    Vec3(0.16, 0.18, 0.16), material);
-            }
-        }
-    };
-    auto knight = [&](double x, double z, const Material& material,
-                      double facing) {
-        addBase(x, z, material);
-        scene.addShape(std::unique_ptr<Shape>(
-            new Transform(
-                std::unique_ptr<Shape>(
-                    new RectangularPrism(
-                        Vec3(), Vec3(0.28, 0.72, 0.36), material)),
-                Vec3(x, pieceY + 0.56, z),
-                Vec3(facing * 0.32, 0.0, 0.0))));
-        addEllipsoid(
-            Vec3(x, pieceY + 0.91, z - facing * 0.14),
-            Vec3(0.25, 0.25, 0.34), material);
-        addPrism(
-            Vec3(x, pieceY + 0.98, z - facing * 0.35),
-            Vec3(0.24, 0.18, 0.30), material);
-        for (int side = -1; side <= 1; side += 2) {
-            scene.addShape(std::unique_ptr<Shape>(
-                new Pyramid(
-                    Vec3(x + side * 0.10, pieceY + 1.06,
-                         z - facing * 0.24),
-                    0.10, 0.10, 0.24, material)));
-        }
-    };
-    auto bishop = [&](double x, double z, const Material& material) {
-        addBase(x, z, material);
-        addPrism(
-            Vec3(x, pieceY + 0.52, z),
-            Vec3(0.24, 0.60, 0.24), material);
-        addEllipsoid(
-            Vec3(x, pieceY + 0.78, z),
-            Vec3(0.31, 0.16, 0.31), material);
-        addSphere(Vec3(x, pieceY + 0.96, z), 0.22, material);
-        scene.addShape(std::unique_ptr<Shape>(
-            new Pyramid(
-                Vec3(x, pieceY + 1.08, z),
-                0.20, 0.20, 0.34, material)));
-    };
-    auto queen = [&](double x, double z, const Material& material) {
-        addBase(x, z, material, 1.08);
-        addPrism(
-            Vec3(x, pieceY + 0.60, z),
-            Vec3(0.27, 0.70, 0.27), material);
-        addEllipsoid(
-            Vec3(x, pieceY + 0.91, z),
-            Vec3(0.36, 0.16, 0.36), material);
-        addSphere(Vec3(x, pieceY + 1.10, z), 0.20, material);
-        for (int point = 0; point < 4; ++point) {
-            const double angle = point * pi * 0.5;
-            addSphere(
-                Vec3(x + std::cos(angle) * 0.22,
-                     pieceY + 1.25,
-                     z + std::sin(angle) * 0.22),
-                0.095, material);
-        }
-        addSphere(Vec3(x, pieceY + 1.34, z), 0.10, material);
-    };
-    auto king = [&](double x, double z, const Material& material) {
-        addBase(x, z, material, 1.08);
-        addPrism(
-            Vec3(x, pieceY + 0.62, z),
-            Vec3(0.29, 0.75, 0.29), material);
-        addEllipsoid(
-            Vec3(x, pieceY + 0.96, z),
-            Vec3(0.35, 0.17, 0.35), material);
-        addSphere(Vec3(x, pieceY + 1.14, z), 0.18, material);
-        addPrism(
-            Vec3(x, pieceY + 1.39, z),
-            Vec3(0.10, 0.42, 0.10), material);
-        addPrism(
-            Vec3(x, pieceY + 1.44, z),
-            Vec3(0.34, 0.10, 0.10), material);
-    };
-
-    auto placeBackRow = [&](double z, const Material& material,
-                            double facing) {
-        rook(-3.5, z, material);
-        knight(-2.5, z, material, facing);
-        bishop(-1.5, z, material);
-        queen(-0.5, z, material);
-        king(0.5, z, material);
-        bishop(1.5, z, material);
-        knight(2.5, z, material, facing);
-        rook(3.5, z, material);
-    };
-    auto placePawns = [&](double z, const Material& material) {
-        for (int file = 0; file < 8; ++file) {
-            pawn(-3.5 + file, z, material);
-        }
-    };
-
-    placeBackRow(boardZ - 3.5, blackPiece, -1.0);
-    placePawns(boardZ - 2.5, blackPiece);
-    placePawns(boardZ + 2.5, whitePiece);
-    placeBackRow(boardZ + 3.5, whitePiece, 1.0);
-
-    // Invisible warm key and cool fill lights keep the full set readable.
-    scene.addLight(std::unique_ptr<LightSource>(
-        new PointSource(
-            Vec3(-5.5, 9.5, boardZ + 2.0),
-            Vec3(1.0, 0.78, 0.55), 8500.0)));
-    scene.addLight(std::unique_ptr<LightSource>(
-        new PointSource(
-            Vec3(8.5, 5.5, boardZ - 1.5),
-            Vec3(0.48, 0.65, 1.0), 4200.0)));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 0, 1), Vec3(0, 0, boardZ - 7),
-                  Material::principled(
-                      Vec3(0.32, 0.27, 0.24),
-                      0.88, 0.0, 0.0))));
-    scene.addShape(std::unique_ptr<Shape>(
-        new Plane(Vec3(0, 1, 0), Vec3(0, -4.62, boardZ),
-                  Material::principled(
-                      Vec3(0.12, 0.10, 0.09),
-                      0.9, 0.0, 0.0))));
-
-    scene.finalize();
-
-    Vec3 camPos(9.5, 7.2, 3.5);
-    Vec3 camRot(-0.29, -0.42, 0.0);
-    if (options.camX >= 0) {
-        camPos = Vec3(options.camX, options.camY, options.camZ);
-    }
-    if (options.camPitch >= 0) {
-        camRot = Vec3(options.camPitch, options.camYaw, options.camRoll);
-    }
-    double fov = pi / 4;
-    if (options.fov > 0) {
-        fov = options.fov;
-    }
-    const double chessFocus =
-        options.focusDistance == 58.0 ? 24.0 : options.focusDistance;
-    Camera camera(camPos, camRot,
-                  800, 600, fov,
-                  options.aperture, chessFocus,
-                  options.shutterOpen, options.shutterClose);
-    ImageWriter imageWriter(options.outputPath, options.outputSettings);
-    Renderer render(
-        imageWriter, scene, camera, options.renderSettings);
-    render.render();
+    const Camera& camera = *loaded.camera;
+    loaded.camera.reset(new Camera(
+        options.cameraPosition
+            ? options.camPosition : camera.getPosition(),
+        options.cameraRotation
+            ? options.camRotation : camera.getRotation(),
+        camera.getImageWidth(), camera.getImageHeight(),
+        options.fov ? options.fovValue : camera.getFov(),
+        options.aperture ? options.apertureValue : camera.getAperture(),
+        options.focusDistance
+            ? options.focusValue : camera.getFocusDistance(),
+        options.shutterOpen
+            ? options.shutterOpenValue : camera.getShutterOpen(),
+        options.shutterClose
+            ? options.shutterCloseValue : camera.getShutterClose()));
 }
 
 } // namespace
@@ -639,12 +420,29 @@ void chessboard(const CommandLineOptions& options) {
 int main(int argc, char* argv[]) {
     try {
         const CommandLineOptions options = parseArguments(argc, argv);
-        if (options.scene == "chessboard") {
-            chessboard(options);
-        } else {
-            demo1(options);
+        if (!options.validateFile.empty()) {
+            JsonSceneLoader::validate(options.validateFile);
+            std::cout << "Scene is valid: "
+                      << options.validateFile << std::endl;
+            return 0;
         }
-        std::cout << "Wrote " << options.outputPath << std::endl;
+
+        LoadedScene loaded = JsonSceneLoader::load(options.sceneFile);
+        applyOverrides(loaded, options);
+        std::cout << "Loaded " << options.sceneFile
+                  << ": " << loaded.summary.objects << " objects, "
+                  << loaded.summary.lights << " analytic lights, "
+                  << loaded.summary.materials << " materials, "
+                  << loaded.summary.textures << " textures, "
+                  << loaded.scene->bvhNodeCount() << " BVH nodes."
+                  << std::endl;
+
+        ImageWriter writer(loaded.outputPath, loaded.outputSettings);
+        Renderer renderer(
+            writer, *loaded.scene, *loaded.camera,
+            loaded.renderSettings);
+        renderer.render();
+        std::cout << "Wrote " << loaded.outputPath << std::endl;
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << std::endl;

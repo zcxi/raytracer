@@ -74,6 +74,13 @@ bool ImageWriter::writeAccumulation(
         accumulation, static_cast<double>(completedSamples));
 }
 
+bool ImageWriter::writeAdaptive(
+        const std::vector<std::vector<Vec3>>& averaged,
+        unsigned int maxSamples) const {
+    (void)maxSamples;
+    return writeScaled(averaged, 1.0);
+}
+
 static bool hasExtension(const std::string& path, const char* ext) {
     const std::size_t pathLen = path.size();
     const std::size_t extLen = std::strlen(ext);

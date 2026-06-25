@@ -101,7 +101,7 @@ bool Scene::isOccluded(const Ray& ray, double maxDistance) const {
     return false;
 }
 
-Vec3 Scene::trace(const Ray& ray) const {
+PathResult Scene::trace(const Ray& ray) const {
     Sampler sampler(0, 0, 1);
     return trace(ray, sampler, PathTraceSettings(1, 1));
 }
@@ -110,34 +110,37 @@ Vec3 Scene::pointLighting(
         const HitRecord& hit, const Material& material,
         const Vec3& outgoing) const {
     Vec3 result;
+    LightSample sample;
+    TraceStats* stats = currentTraceStats();
     for (const auto& lightSource : lightSources) {
-        const Vec3 pointToLight = lightSource->getPosition() - hit.point;
-        const double lightDistance = pointToLight.getLength();
-        if (lightDistance <= RAY_EPSILON) {
+        if (stats) {
+            ++stats->consideredLights;
+        }
+        if (!lightSource->sampleIncident(
+                hit.point, hit.normal, sample)) {
+            if (stats) {
+                ++stats->backfaceRejects;
+            }
             continue;
         }
-
-        const Vec3 lightDirection = pointToLight / lightDistance;
+        const Vec3 shadowOrigin =
+            hit.point + hit.normal * RAY_EPSILON;
+        const Ray shadowRay(shadowOrigin, sample.direction);
+        if (stats) {
+            ++stats->emittedShadowRays;
+        }
+        if (isOccluded(shadowRay, sample.maximumDistance)) {
+            if (stats) {
+                ++stats->occludedShadowRays;
+            }
+            continue;
+        }
         const double surfaceCosine =
-            std::max(0.0, hit.normal.dot(lightDirection));
-        if (surfaceCosine <= 0.0) {
-            continue;
-        }
-
-        const Vec3 shadowOrigin = hit.point + hit.normal * RAY_EPSILON;
-        const Ray shadowRay(shadowOrigin, lightDirection);
-        if (isOccluded(shadowRay, lightDistance - RAY_EPSILON)) {
-            continue;
-        }
-
-        const double distanceIntensity =
-            lightSource->getIncidentBrightness(hit.point);
-        const Vec3 incomingRadiance =
-            lightSource->getColor() * distanceIntensity;
+            std::max(0.0, hit.normal.dot(sample.direction));
         const Vec3 bsdf = Bsdf::evaluate(
             material, hit.normal,
-            outgoing, lightDirection);
-        result = result + bsdf.elementwiseMultiply(incomingRadiance) *
+            outgoing, sample.direction);
+        result = result + bsdf.elementwiseMultiply(sample.radiance) *
             surfaceCosine;
     }
     return result;
@@ -252,48 +255,11 @@ Vec3 Scene::directLighting(
         (surfaceCosine * weight / lightPdf);
 }
 
-Vec3 Scene::reflect(const Vec3& direction, const Vec3& normal) {
-    return direction - normal * (2.0 * direction.dot(normal));
-}
-
-Vec3 Scene::refract(const Vec3& direction, const Vec3& normal,
-                    double refractionRatio) {
-    const double cosine =
-        std::min((-direction).dot(normal), 1.0);
-    const Vec3 perpendicular =
-        (direction + normal * cosine) * refractionRatio;
-    const double parallelLengthSquared =
-        std::max(0.0, 1.0 - perpendicular.dot(perpendicular));
-    const Vec3 parallel =
-        normal * -std::sqrt(parallelLengthSquared);
-    return (perpendicular + parallel).normalize();
-}
-
-bool Scene::hasTotalInternalReflection(
-        const Vec3& direction, const Vec3& normal,
-        double refractionRatio) {
-    const double cosine =
-        std::min((-direction).dot(normal), 1.0);
-    const double sine =
-        std::sqrt(std::max(0.0, 1.0 - cosine * cosine));
-    return refractionRatio * sine > 1.0;
-}
-
-double Scene::schlickReflectance(double cosine,
-                                 double refractionRatio) {
-    double base = (1.0 - refractionRatio) /
-                  (1.0 + refractionRatio);
-    base *= base;
-    const double oneMinusCosine = 1.0 - cosine;
-    return base + (1.0 - base) *
-        oneMinusCosine * oneMinusCosine * oneMinusCosine *
-        oneMinusCosine * oneMinusCosine;
-}
-
-Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
-                  const PathTraceSettings& settings) const {
+PathResult Scene::trace(const Ray& ray, Sampler& sampler,
+                   const PathTraceSettings& settings) const {
+    PathResult result;
     if (settings.maxBounces == 0) {
-        return Vec3();
+        return result;
     }
 
     Vec3 radiance;
@@ -302,6 +268,7 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
     Vec3 previousPoint;
     double previousBsdfPdf = 0.0;
     bool previousWasDelta = true;
+    bool firstBounce = true;
     TraceStats* stats = currentTraceStats();
     if (stats) {
         ++stats->paths;
@@ -331,6 +298,14 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
         Material material = hit.shape->getMaterial();
         material.albedo =
             material.colorAt(hit.u, hit.v, hit.point);
+
+        if (firstBounce) {
+            result.albedo = material.albedo;
+            result.normal = hit.normal;
+            result.position = hit.point;
+            firstBounce = false;
+        }
+
         double emissionWeight = 1.0;
         if (bounce > 0 && !previousWasDelta &&
             !material.emission.near(Vec3())) {
@@ -379,7 +354,8 @@ Vec3 Scene::trace(const Ray& ray, Sampler& sampler,
             hit.point + hit.normal * (RAY_EPSILON * side),
             bsdfSample.direction);
     }
-    return radiance;
+    result.radiance = radiance;
+    return result;
 }
 
 void Scene::addShape(std::unique_ptr<Shape> shape) {

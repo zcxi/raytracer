@@ -1,5 +1,6 @@
 #include "Materials/Material.h"
 #include "Math/Ray.h"
+#include "Acceleration/SimdAabb.h"
 #include "Shapes/HitRecord.h"
 #include "Shapes/ObjMesh.h"
 
@@ -108,6 +109,120 @@ int main() {
         std::cout << "mesh_speedup,"
                   << std::fixed << std::setprecision(2)
                   << brute.seconds / accelerated.seconds << "\n";
+
+#ifdef RAYTRACER_SIMD_ENABLED
+        const int packetCount = 250000;
+        const int totalRays = packetCount * 4;
+        std::vector<std::vector<double>> originsX(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> originsY(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> originsZ(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> invDirX(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> invDirY(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> invDirZ(
+            packetCount, std::vector<double>(4));
+        std::vector<std::vector<double>> tMinData(
+            packetCount, std::vector<double>(4, 0.0));
+        std::vector<std::vector<double>> tMaxData(
+            packetCount, std::vector<double>(4, 100.0));
+        std::vector<Aabb> boxes;
+        boxes.reserve(packetCount);
+        for (int i = 0; i < packetCount; ++i) {
+            double cx = (static_cast<double>(i * 7 % 100) - 50.0) * 0.1;
+            double cy = (static_cast<double>(i * 13 % 100) - 50.0) * 0.1;
+            double cz = (static_cast<double>(i * 17 % 100) - 50.0) * 0.1;
+            boxes.emplace_back(
+                Vec3(cx - 1.0, cy - 1.0, cz - 1.0),
+                Vec3(cx + 1.0, cy + 1.0, cz + 1.0));
+            for (int j = 0; j < 4; ++j) {
+                double ox = (i * 4 + j) * 0.03 - 30.0;
+                double oy = (i * 4 + j) * 0.07 - 30.0;
+                double oz = (i * 4 + j) * 0.05 - 30.0;
+                double dx = (i + j * 7) % 11 - 5.0;
+                double dy = (i + j * 11) % 11 - 5.0;
+                double dz = (i + j * 13) % 11 - 5.0;
+                if (std::abs(dx) < 0.01) dx = 0.5;
+                if (std::abs(dy) < 0.01) dy = 0.5;
+                if (std::abs(dz) < 0.01) dz = 0.5;
+                double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+                originsX[i][j] = ox;
+                originsY[i][j] = oy;
+                originsZ[i][j] = oz;
+                invDirX[i][j] = 1.0 / (dx / length);
+                invDirY[i][j] = 1.0 / (dy / length);
+                invDirZ[i][j] = 1.0 / (dz / length);
+            }
+        }
+
+        std::vector<bool> resultsScalar(totalRays, false);
+        std::vector<bool> resultsSimd(totalRays, false);
+        std::size_t hitsScalar = 0;
+        std::size_t hitsSimd = 0;
+
+        {
+            const auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < packetCount; ++i) {
+                bool tmp[4] = {false, false, false, false};
+                SimdAabb::intersectScalar(
+                    boxes[i],
+                    originsX[i].data(), originsY[i].data(),
+                    originsZ[i].data(), invDirX[i].data(),
+                    invDirY[i].data(), invDirZ[i].data(),
+                    tMinData[i].data(), tMaxData[i].data(), tmp);
+                for (int j = 0; j < 4; ++j) {
+                    resultsScalar[i * 4 + j] = tmp[j];
+                    if (tmp[j]) ++hitsScalar;
+                }
+            }
+            const double secs = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start).count();
+            std::cout << "simd_scalar," << std::fixed
+                      << std::setprecision(6) << secs << ","
+                      << std::setprecision(3)
+                      << static_cast<double>(totalRays) / secs / 1e6
+                      << "," << hitsScalar << "\n";
+        }
+
+        {
+            const auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < packetCount; ++i) {
+                bool tmp[4] = {false, false, false, false};
+                SimdAabb::intersect4(
+                    boxes[i],
+                    originsX[i].data(), originsY[i].data(),
+                    originsZ[i].data(), invDirX[i].data(),
+                    invDirY[i].data(), invDirZ[i].data(),
+                    tMinData[i].data(), tMaxData[i].data(), tmp);
+                for (int j = 0; j < 4; ++j) {
+                    resultsSimd[i * 4 + j] = tmp[j];
+                    if (tmp[j]) ++hitsSimd;
+                }
+            }
+            const double secs = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start).count();
+            std::cout << "simd_packet," << std::fixed
+                      << std::setprecision(6) << secs << ","
+                      << std::setprecision(3)
+                      << static_cast<double>(totalRays) / secs / 1e6
+                      << "," << hitsSimd << "\n";
+        }
+
+        bool allMatch = hitsScalar == hitsSimd;
+        auto scalarIt = resultsScalar.begin();
+        auto simdIt = resultsSimd.begin();
+        for (; scalarIt != resultsScalar.end(); ++scalarIt, ++simdIt) {
+            if (*scalarIt != *simdIt) {
+                allMatch = false;
+                break;
+            }
+        }
+        std::cout << "simd_results_match," << (allMatch ? "yes" : "no") << "\n";
+#endif
+
         std::remove(path.c_str());
         return accelerated.hits == brute.hits ? 0 : 1;
     } catch (const std::exception& error) {

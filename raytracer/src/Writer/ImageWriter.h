@@ -37,6 +37,9 @@ public:
     bool writeAccumulation(
         const std::vector<std::vector<Vec3>>& accumulation,
         unsigned int completedSamples) const;
+    bool writeAdaptive(
+        const std::vector<std::vector<Vec3>>& averaged,
+        unsigned int maxSamples) const;
     static double applyExposure(double linearValue, double exposure);
     static double toneMap(double linearValue, ToneMapper toneMapper);
     static double linearToSrgb(double linearValue);

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(raytracer VERSION 1.2.0 LANGUAGES CXX)
+project(raytracer VERSION 1.4.0 LANGUAGES CXX)
 
 option(RAYTRACER_ENABLE_SANITIZERS
        "Enable address and undefined-behavior sanitizers" OFF)
@@ -14,18 +14,23 @@ find_package(Threads REQUIRED)
 set(RAYTRACER_SOURCES
     raytracer/src/Acceleration/Aabb.cpp
     raytracer/src/Acceleration/Bvh.cpp
+    raytracer/src/Acceleration/SimdAabb.cpp
     raytracer/src/Diagnostics/TraceStats.cpp
     raytracer/src/Math/Quaternion.cpp
     raytracer/src/Math/Sampler.cpp
     raytracer/src/Math/Vec3.cpp
     raytracer/src/Materials/Bsdf.cpp
     raytracer/src/Materials/Material.cpp
+    raytracer/src/PostProcessing/Denoiser.cpp
     raytracer/src/Renderer.cpp
     raytracer/src/Scene/Camera.cpp
     raytracer/src/Scene/Environment.cpp
     raytracer/src/Scene/Light/LightSource.cpp
     raytracer/src/Scene/Light/PointSource.cpp
+    raytracer/src/Scene/Light/DirectionalSource.cpp
+    raytracer/src/Scene/Light/SpotSource.cpp
     raytracer/src/Scene/Scene.cpp
+    raytracer/src/SceneDescription/JsonSceneLoader.cpp
     raytracer/src/Shapes/Cube.cpp
     raytracer/src/Shapes/MovingSphere.cpp
     raytracer/src/Shapes/ObjMesh.cpp
@@ -42,7 +47,8 @@ set(RAYTRACER_SOURCES
 )
 
 add_library(raytracer_lib ${RAYTRACER_SOURCES})
-target_include_directories(raytracer_lib PUBLIC raytracer/src vendor/stb)
+target_include_directories(
+    raytracer_lib PUBLIC raytracer/src vendor/stb vendor)
 target_link_libraries(raytracer_lib PUBLIC Threads::Threads)
 
 add_executable(raytracer raytracer/src/main.cpp)
@@ -58,6 +64,8 @@ target_link_libraries(raytracer_benchmark PRIVATE raytracer_lib)
 option(RAYTRACER_OPTIMIZE_NATIVE "Enable -march=native optimization" ON)
 option(RAYTRACER_FAST_MATH
        "Enable relaxed floating-point optimizations" ON)
+option(RAYTRACER_SIMD
+       "Enable SSE/AVX packet traversal prototype" ON)
 
 foreach(target raytracer_lib raytracer raytracer_tests raytracer_benchmark)
     if(MSVC)
@@ -79,6 +87,15 @@ foreach(target raytracer_lib raytracer raytracer_tests raytracer_benchmark)
                 ${target} PRIVATE
                 $<$<CONFIG:Release>:-ffast-math>
                 $<$<CONFIG:Release>:-fno-math-errno>)
+        endif()
+    endif()
+    if(RAYTRACER_SIMD AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86|AMD64|amd64|x86_64")
+        target_compile_definitions(${target} PRIVATE RAYTRACER_SIMD_ENABLED)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /arch:AVX)
+        else()
+            target_compile_options(
+                ${target} PRIVATE -mavx -mfma $<$<NOT:$<CONFIG:Debug>>:-O3>)
         endif()
     endif()
 endforeach()

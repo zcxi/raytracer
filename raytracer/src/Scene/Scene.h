@@ -8,12 +8,24 @@
 
 #include "Light/LightSource.h"
 #include "Environment.h"
-#include "../shapes/Shape.h"
+#include "../Shapes/Shape.h"
 #include "../Math/Ray.h"
 #include "../Math/Sampler.h"
 #include "../Materials/Bsdf.h"
 #include "../Acceleration/Bvh.h"
 #include <memory>
+
+struct PathResult {
+    Vec3 radiance;
+    Vec3 albedo;
+    Vec3 normal;
+    Vec3 position;
+
+    PathResult()
+        : radiance(), albedo(), normal(), position() {}
+    PathResult(const Vec3& r, const Vec3& a, const Vec3& n, const Vec3& p)
+        : radiance(r), albedo(a), normal(n), position(p) {}
+};
 
 struct PathTraceSettings {
     unsigned int maxBounces;
@@ -33,8 +45,8 @@ class Scene {
 
         explicit Scene(const Vec3& backgroundColor = Vec3(0.0, 0.0, 0.0));
 
-        Vec3 trace(const Ray& ray) const;
-        Vec3 trace(const Ray& ray, Sampler& sampler,
+        PathResult trace(const Ray& ray) const;
+        PathResult trace(const Ray& ray, Sampler& sampler,
                    const PathTraceSettings& settings) const;
         bool findClosestHit(const Ray& ray, double minDistance,
                             double maxDistance, HitRecord& hit) const;
@@ -43,6 +55,13 @@ class Scene {
         void addLight(std::unique_ptr<LightSource> source);
         void finalize() const;
         void setEnvironment(const Environment& environment);
+        void setEnvironmentIntensity(double intensity) {
+            environment.setIntensity(intensity);
+        }
+        bool loadEnvironmentMap(
+                const std::string& path, double intensity) {
+            return environment.loadPpm(path, intensity);
+        }
         void setAccelerationEnabled(bool enabled) {
             accelerationEnabled = enabled;
         }
@@ -54,15 +73,9 @@ class Scene {
         std::size_t boundedShapeCount() const {
             return boundedShapes.size();
         }
+        std::size_t shapeCount() const { return shapes.size(); }
+        std::size_t lightCount() const { return lightSources.size(); }
 
-        static Vec3 reflect(const Vec3& direction, const Vec3& normal);
-        static Vec3 refract(const Vec3& direction, const Vec3& normal,
-                            double refractionRatio);
-        static bool hasTotalInternalReflection(
-            const Vec3& direction, const Vec3& normal,
-            double refractionRatio);
-        static double schlickReflectance(double cosine,
-                                         double refractionRatio);
         static double powerHeuristic(double firstPdf, double secondPdf);
 
     private:

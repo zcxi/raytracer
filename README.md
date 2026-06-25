@@ -1,8 +1,7 @@
 # raytracer
 
-A small C++26 path tracer. Version 1.2 adds sample-batched tiles, binned SAH
-BVH construction, near-first traversal, cached BVH ray data, opt-in tracing
-statistics, and relaxed Release floating-point optimization.
+A small C++26 path tracer. Version 1.4 adds adaptive sampling, directional
+and spot lights, light-influence culling counters, and a SIMD AABB prototype.
 
 ## Building
 
@@ -20,6 +19,13 @@ Run the demo renderer with an optional output path and image-quality settings:
 ./build/raytracer output.ppm --samples 128 --bounces 8 \
   --rr-start 4 --exposure 0.5 --tone-map aces --preview 16 --seed 1 \
   --env-map studio.ppm --env-intensity 1.5 --tile-size 16
+```
+
+Render from a versioned JSON scene file:
+
+```sh
+./build/raytracer --scene-file scenes/demo.json --samples 64 \
+  --exposure 0.2 --tone-map reinhard
 ```
 
 Render the complete framed chessboard scene with all 32 pieces:
@@ -67,6 +73,25 @@ cmake --build build-release
 See [BENCHMARKS.md](BENCHMARKS.md) for the v1.0 through v1.2 results and
 commands used.
 
+## JSON scene format (v1)
+
+Scenes can be loaded from versioned JSON files with `--scene-file`. The
+format supports textures, materials, prototypes, instances, groups, analytic
+lights, emissive geometry, and a gradient or mapped environment.
+
+CLI values override equivalents from the JSON file. Validate a file without
+rendering:
+
+```sh
+./build/raytracer --validate-scene scenes/demo.json
+```
+
+Relative asset paths (OBJ meshes, PPM textures, environment maps) are
+resolved from the scene file's directory. The bundled `demo.json` and
+`chessboard.json` in `scenes/` are the reference implementations. See
+[ROADMAP.md](ROADMAP.md) (Phase 9) for the full JSON schema and field
+reference.
+
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the
 configuration subdirectory.
@@ -92,6 +117,7 @@ ctest --test-dir build-sanitize --output-on-failure
 - `raytracer/src/Shapes` — spheres, planes, cubes, rectangular prisms,
   square pyramids, and intersection records
 - `raytracer/src/Writer` — linear RGB to sRGB PPM output
+- `raytracer/src/SceneDescription` — versioned JSON scene loader
 - `tests` — deterministic correctness tests
 
 See [ROADMAP.md](ROADMAP.md) for the path-tracing roadmap.

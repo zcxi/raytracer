@@ -39,15 +39,20 @@ public:
         double normalLightCosine,
         double roughness);
     static bool hasNonDeltaLobe(const Material& material);
+    static Vec3 reflect(const Vec3& direction, const Vec3& normal);
+    static Vec3 refract(const Vec3& direction, const Vec3& normal,
+                        double refractionRatio);
+    static bool hasTotalInternalReflection(
+        const Vec3& direction, const Vec3& normal,
+        double refractionRatio);
+    static double schlickReflectance(double cosine,
+                                     double refractionRatio);
 
 private:
     static Vec3 cosineHemisphere(
         const Vec3& normal, Sampler& sampler);
     static Vec3 sampleGgxNormal(
         const Vec3& normal, double roughness, Sampler& sampler);
-    static Vec3 reflect(const Vec3& direction, const Vec3& normal);
-    static Vec3 refract(const Vec3& direction, const Vec3& normal,
-                        double refractionRatio);
 };
 
 #endif

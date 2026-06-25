@@ -11,6 +11,12 @@ struct TraceStats {
     std::uint64_t bvhNodeVisits;
     std::uint64_t paths;
     std::uint64_t pathVertices;
+    std::uint64_t consideredLights;
+    std::uint64_t rangeRejects;
+    std::uint64_t coneRejects;
+    std::uint64_t backfaceRejects;
+    std::uint64_t emittedShadowRays;
+    std::uint64_t occludedShadowRays;
 
     TraceStats()
         : rays(0),
@@ -19,7 +25,13 @@ struct TraceStats {
           primitiveTests(0),
           bvhNodeVisits(0),
           paths(0),
-          pathVertices(0) {
+          pathVertices(0),
+          consideredLights(0),
+          rangeRejects(0),
+          coneRejects(0),
+          backfaceRejects(0),
+          emittedShadowRays(0),
+          occludedShadowRays(0) {
     }
 
     TraceStats& operator+=(const TraceStats& other) {
@@ -30,6 +42,12 @@ struct TraceStats {
         bvhNodeVisits += other.bvhNodeVisits;
         paths += other.paths;
         pathVertices += other.pathVertices;
+        consideredLights += other.consideredLights;
+        rangeRejects += other.rangeRejects;
+        coneRejects += other.coneRejects;
+        backfaceRejects += other.backfaceRejects;
+        emittedShadowRays += other.emittedShadowRays;
+        occludedShadowRays += other.occludedShadowRays;
         return *this;
     }
 

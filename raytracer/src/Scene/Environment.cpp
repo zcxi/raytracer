@@ -116,3 +116,11 @@ bool Environment::loadPpm(
     intensity = mapIntensity;
     return true;
 }
+
+void Environment::setIntensity(double value) {
+    if (!std::isfinite(value) || value < 0.0) {
+        throw std::invalid_argument(
+            "Environment intensity must be finite and non-negative.");
+    }
+    intensity = value;
+}

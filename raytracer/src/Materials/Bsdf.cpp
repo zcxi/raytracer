@@ -170,6 +170,27 @@ Vec3 Bsdf::refract(const Vec3& direction, const Vec3& normal,
     return (perpendicular + parallel).normalize();
 }
 
+bool Bsdf::hasTotalInternalReflection(
+        const Vec3& direction, const Vec3& normal,
+        double refractionRatio) {
+    const double cosine =
+        std::min((-direction).dot(normal), 1.0);
+    const double sine =
+        std::sqrt(std::max(0.0, 1.0 - cosine * cosine));
+    return refractionRatio * sine > 1.0;
+}
+
+double Bsdf::schlickReflectance(double cosine,
+                                double refractionRatio) {
+    double base = (1.0 - refractionRatio) /
+                  (1.0 + refractionRatio);
+    base *= base;
+    const double oneMinusCosine = 1.0 - cosine;
+    return base + (1.0 - base) *
+        oneMinusCosine * oneMinusCosine * oneMinusCosine *
+        oneMinusCosine * oneMinusCosine;
+}
+
 BsdfSample Bsdf::sample(
         const Material& material, const Vec3& normal,
         const Vec3& outgoing, bool frontFace, Sampler& sampler) {
@@ -184,10 +205,10 @@ BsdfSample Bsdf::sample(
         return result;
     }
 
-    const bool legacyGlass =
+    const bool isDielectric =
         material.type == MaterialType::Dielectric;
     const bool sampleTransmission =
-        legacyGlass || sampler.next() < material.transmission;
+        isDielectric || sampler.next() < material.transmission;
     if (sampleTransmission) {
         const double ratio = frontFace
             ? 1.0 / material.refractiveIndex

@@ -5,12 +5,16 @@
 #include "Materials/Bsdf.h"
 #include "Acceleration/Aabb.h"
 #include "Acceleration/Bvh.h"
+#include "Acceleration/SimdAabb.h"
 #include "Diagnostics/TraceStats.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
 #include "Scene/Environment.h"
 #include "Scene/Light/PointSource.h"
+#include "Scene/Light/DirectionalSource.h"
+#include "Scene/Light/SpotSource.h"
 #include "Scene/Scene.h"
+#include "SceneDescription/JsonSceneLoader.h"
 #include "Shapes/Cube.h"
 #include "Shapes/Plane.h"
 #include "Shapes/Pyramid.h"
@@ -23,6 +27,7 @@
 #include "Shapes/Sphere.h"
 #include "Writer/ImageWriter.h"
 #include "Textures/Texture.h"
+#include "PostProcessing/Denoiser.h"
 
 #include <cmath>
 #include <cstdio>
@@ -212,6 +217,99 @@ void testPerformanceQuickWins() {
     std::remove(passPath.c_str());
 }
 
+void expectRuntimeError(
+        const std::function<void()>& action,
+        const std::string& expectedText,
+        const std::string& message) {
+    try {
+        action();
+        expect(false, message);
+    } catch (const std::runtime_error& error) {
+        expect(std::string(error.what()).find(expectedText) !=
+                   std::string::npos,
+               message + " (unexpected error: " + error.what() + ")");
+    }
+}
+
+void testJsonSceneLoading() {
+    const std::string scenePath = "test-scene.json";
+    {
+        std::ofstream scene(scenePath.c_str());
+        scene
+            << "{\n"
+            << "  \"version\": 1,\n"
+            << "  \"render\": {\"width\": 8, \"height\": 6,"
+               " \"samples\": 3, \"toneMapper\": \"reinhard\"},\n"
+            << "  \"camera\": {\"position\": [0,0,0],"
+               " \"rotation\": [0,0,0], \"verticalFov\": 1.0},\n"
+            << "  \"environment\": {\"bottom\": [0.1,0.2,0.3],"
+               " \"top\": [0.4,0.5,0.6]},\n"
+            << "  \"materials\": {\"mat\": {\"type\": \"diffuse\","
+               " \"albedo\": [0.8,0.7,0.6]}},\n"
+            << "  \"prototypes\": {\"ball\": {\"type\": \"sphere\","
+               " \"center\": [0,0,-4], \"radius\": 1,"
+               " \"material\": \"mat\"}},\n"
+            << "  \"lights\": [{\"type\": \"point\","
+               " \"position\": [0,2,0], \"color\": [1,1,1],"
+               " \"intensity\": 10}],\n"
+            << "  \"objects\": [{\"type\": \"instance\","
+               " \"prototype\": \"ball\", \"translation\": [2,0,0]}]\n"
+            << "}\n";
+    }
+    LoadedScene loaded = JsonSceneLoader::load(scenePath);
+    expect(loaded.camera->getImageWidth() == 8 &&
+               loaded.camera->getImageHeight() == 6,
+           "JSON scenes configure camera image dimensions.");
+    expect(loaded.renderSettings.samplesPerPixel == 3,
+           "JSON scenes configure render defaults.");
+    expect(loaded.scene->shapeCount() == 1 &&
+               loaded.scene->lightCount() == 1,
+           "JSON scenes construct prototype instances and lights.");
+    HitRecord hit;
+    expect(loaded.scene->findClosestHit(
+               Ray(Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, hit),
+           "Prototype instance translation affects JSON geometry.");
+    std::remove(scenePath.c_str());
+
+    const std::string invalidPath = "test-invalid-scene.json";
+    {
+        std::ofstream scene(invalidPath.c_str());
+        scene << "{\"version\":2,\"camera\":{}}";
+    }
+    expectRuntimeError(
+        [invalidPath]() { JsonSceneLoader::validate(invalidPath); },
+        "unsupported scene version",
+        "JSON loader rejects unsupported schema versions.");
+    std::remove(invalidPath.c_str());
+
+    const std::string referencePath = "test-invalid-reference.json";
+    {
+        std::ofstream scene(referencePath.c_str());
+        scene
+            << "{\"version\":1,\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"objects\":[{\"type\":\"sphere\",\"center\":[0,0,-4],"
+               "\"radius\":1,\"material\":\"missing\"}]}";
+    }
+    expectRuntimeError(
+        [referencePath]() { JsonSceneLoader::validate(referencePath); },
+        "unknown material",
+        "JSON loader reports unresolved named resources.");
+    std::remove(referencePath.c_str());
+
+    const std::string malformedPath = "test-malformed-scene.json";
+    {
+        std::ofstream scene(malformedPath.c_str());
+        scene << "{\"version\":1,";
+    }
+    expectRuntimeError(
+        [malformedPath]() { JsonSceneLoader::validate(malformedPath); },
+        "invalid JSON",
+        "JSON loader reports malformed input.");
+    std::remove(malformedPath.c_str());
+}
+
 void testQuaternionRotation() {
     const Vec3 rotated = Quaternion::rotateVector(
         Vec3(1.0, 0.0, 0.0), PI * 0.5, Vec3(0.0, 0.0, 1.0));
@@ -394,29 +492,29 @@ void testDirectLightingAndShadows() {
         new PointSource(Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0),
                         4.0 * PI * PI)));
 
-    const Vec3 lit = litScene.trace(Ray(Vec3(), Vec3(0.0, 0.0, -1.0)));
+    const Vec3 lit = litScene.trace(Ray(Vec3(), Vec3(0.0, 0.0, -1.0))).radiance;
     expectVecNear(lit, Vec3(0.97, 0.0, 0.0), 1e-6,
-                  "PBR direct lighting includes light color and conserved energy.");
+                   "PBR direct lighting includes light color and conserved energy.");
 
     Scene backgroundScene(Vec3(0.1, 0.2, 0.3));
     const Vec3 background =
-        backgroundScene.trace(Ray(Vec3(), Vec3(0.0, 1.0, 0.0)));
+        backgroundScene.trace(Ray(Vec3(), Vec3(0.0, 1.0, 0.0))).radiance;
     expectVecNear(background, Vec3(0.1, 0.2, 0.3), 1e-9,
-                  "Missed rays return the configured linear background.");
+                   "Missed rays return the configured linear background.");
 
     Scene shadowScene;
     shadowScene.addShape(std::unique_ptr<Shape>(
         new Plane(Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -5.0),
-                  Vec3(1.0, 1.0, 1.0), Vec3(), 0.0, 1.0)));
+                  Material::diffuse(Vec3(1.0, 1.0, 1.0)))));
     shadowScene.addShape(std::unique_ptr<Shape>(
         new Sphere(Vec3(1.0, 0.0, -2.5), 0.45,
                    Vec3(1.0, 1.0, 1.0), Vec3(), 0.0, 1.0)));
     shadowScene.addLight(std::unique_ptr<LightSource>(
         new PointSource(Vec3(2.0, 0.0, 0.0), Vec3(1.0, 1.0, 1.0), 100.0)));
     const Vec3 shadowed =
-        shadowScene.trace(Ray(Vec3(), Vec3(0.0, 0.0, -1.0)));
+        shadowScene.trace(Ray(Vec3(), Vec3(0.0, 0.0, -1.0))).radiance;
     expectVecNear(shadowed, Vec3(), 1e-9,
-                  "Shadow rays respect their interval and detect blockers.");
+                   "Shadow rays respect their interval and detect blockers.");
 }
 
 void testImageEncoding() {
@@ -512,26 +610,26 @@ void testMaterialsAndOptics() {
     }, "Materials reject albedo above one.");
 
     expectVecNear(
-        Scene::reflect(
+        Bsdf::reflect(
             Vec3(1.0, -1.0, 0.0).normalize(),
             Vec3(0.0, 1.0, 0.0)),
         Vec3(1.0, 1.0, 0.0).normalize(), 1e-9,
         "Mirror reflection follows the surface normal.");
     expectVecNear(
-        Scene::refract(
+        Bsdf::refract(
             Vec3(0.0, -1.0, 0.0),
             Vec3(0.0, 1.0, 0.0), 1.0 / 1.5),
         Vec3(0.0, -1.0, 0.0), 1e-9,
         "Normal-incidence refraction does not bend.");
     expectNear(
-        Scene::schlickReflectance(1.0, 1.0 / 1.5),
+        Bsdf::schlickReflectance(1.0, 1.0 / 1.5),
         0.04, 1e-9,
         "Schlick Fresnel gives four-percent glass reflectance head-on.");
-    expect(!Scene::hasTotalInternalReflection(
+    expect(!Bsdf::hasTotalInternalReflection(
                Vec3(0.0, -1.0, 0.0),
                Vec3(0.0, 1.0, 0.0), 1.5),
            "A normal-incidence ray can exit a dielectric.");
-    expect(Scene::hasTotalInternalReflection(
+    expect(Bsdf::hasTotalInternalReflection(
                Vec3(0.98, -0.2, 0.0).normalize(),
                Vec3(0.0, 1.0, 0.0), 1.5),
            "A steep inside ray triggers total internal reflection.");
@@ -611,9 +709,9 @@ void testSecondaryRayTransport() {
     Sampler mirrorSampler(0, 0, 7);
     const Vec3 reflected = mirrorScene.trace(
         Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
-        mirrorSampler, PathTraceSettings(2, 99));
+        mirrorSampler, PathTraceSettings(2, 99)).radiance;
     expectVecNear(reflected, Vec3(0.2, 0.3, 0.4), 1e-9,
-                  "A perfect mirror reflects environment radiance.");
+                   "A perfect mirror reflects environment radiance.");
 
     Scene emissiveScene;
     emissiveScene.addShape(std::unique_ptr<Shape>(
@@ -624,18 +722,18 @@ void testSecondaryRayTransport() {
     Sampler emissiveSampler(0, 0, 9);
     const Vec3 emitted = emissiveScene.trace(
         Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
-        emissiveSampler, PathTraceSettings(1, 99));
+        emissiveSampler, PathTraceSettings(1, 99)).radiance;
     expectVecNear(emitted, Vec3(3.0, 2.0, 1.0), 1e-9,
-                  "Emissive materials contribute radiance at a hit.");
+                   "Emissive materials contribute radiance at a hit.");
 
     Sampler firstSampler(12, 4, 99);
     Sampler secondSampler(12, 4, 99);
     const Vec3 firstPath = mirrorScene.trace(
         Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
-        firstSampler, PathTraceSettings(8, 2));
+        firstSampler, PathTraceSettings(8, 2)).radiance;
     const Vec3 secondPath = mirrorScene.trace(
         Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
-        secondSampler, PathTraceSettings(8, 2));
+        secondSampler, PathTraceSettings(8, 2)).radiance;
     expectVecNear(firstPath, secondPath, 0.0,
                   "Secondary-ray sampling is deterministic.");
 }
@@ -731,7 +829,7 @@ void testAreaLightsAndEnvironment() {
     Sampler areaSampler(1, 1, 123);
     const Vec3 areaLit = areaLightScene.trace(
         Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
-        areaSampler, PathTraceSettings(1, 99));
+        areaSampler, PathTraceSettings(1, 99)).radiance;
     expect(areaLit.X() > 0.0 && areaLit.Y() > 0.0 &&
                areaLit.Z() > 0.0,
            "Emissive rectangles are sampled as direct area lights.");
@@ -920,6 +1018,273 @@ void testSceneCapabilityFeatures() {
            "Transformed instances produce world-space bounds.");
 }
 
+void testDirectionalAndSpotLights() {
+    const DirectionalSource sun(
+        Vec3(0.0, -1.0, 0.0).normalize(),
+        Vec3(1.0, 1.0, 1.0), 2.0);
+    LightSample dirSample;
+    expect(sun.sampleIncident(
+               Vec3(), Vec3(0.0, 1.0, 0.0), dirSample),
+           "Directional light sampled from below hits an up-facing surface.");
+    expectVecNear(dirSample.radiance, Vec3(2.0, 2.0, 2.0), 1e-9,
+                   "Directional light radiance is constant irrespective of position.");
+    expect(!sun.sampleIncident(
+               Vec3(), Vec3(0.0, -1.0, 0.0), dirSample),
+           "Directional light is rejected when facing away.");
+    expect(!sun.isFinite(),
+           "Directional lights report non-finite position.");
+    expect(sun.getDirection().Y() < -0.99,
+           "Directional light direction is stored normalized.");
+
+    const SpotSource spot(
+        Vec3(0.0, 5.0, 0.0), Vec3(0.0, -1.0, 0.0),
+        Vec3(1.0, 0.0, 1.0), 100.0, 5.0, 0.1, 0.4);
+    LightSample spotSample;
+    expect(spot.sampleIncident(
+               Vec3(0.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), spotSample),
+           "Spot light illuminates a point inside the cone.");
+    expect(!spot.sampleIncident(
+               Vec3(0.0, 0.0, 0.0), Vec3(0.0, -1.0, 0.0), spotSample),
+           "Spot light is rejected when facing away.");
+    expect(!spot.sampleIncident(
+               Vec3(0.0, 10.0, 0.0), Vec3(0.0, -1.0, 0.0), spotSample),
+           "Spot light is rejected outside its range.");
+    expect(!spot.sampleIncident(
+               Vec3(20.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), spotSample),
+           "Spot light is rejected outside its outer cone.");
+    expect(spot.getRange() == 5.0,
+           "Spot source stores its range.");
+    expect(spot.getInnerAngle() == 0.1,
+           "Spot source stores its inner cone angle.");
+    expect(spot.getOuterAngle() == 0.4,
+           "Spot source stores its outer cone angle.");
+    expectThrows([]() {
+        SpotSource(Vec3(), Vec3(0.0, -1.0, 0.0),
+                   Vec3(1.0, 1.0, 1.0), 10.0, 0.0, 0.5, 0.3);
+    }, "Spot lights reject reversed cone angles.");
+    expectThrows([]() {
+        DirectionalSource(Vec3(), Vec3(1.0, 1.0, 1.0), 1.0);
+    }, "Directional lights reject zero-length directions.");
+
+    Scene scene;
+    scene.addShape(std::unique_ptr<Shape>(
+        new Plane(Vec3(0.0, 1.0, 0.0), Vec3(0.0, -1.0, 0.0),
+                  Material::diffuse(Vec3(1.0, 1.0, 1.0)))));
+    scene.addLight(std::unique_ptr<LightSource>(
+        new DirectionalSource(
+            Vec3(0.0, -1.0, 0.0),
+            Vec3(1.0, 0.0, 0.0), 2.0)));
+    Sampler dirSampler(0, 1, 42);
+    const Vec3 dirLit = scene.trace(
+        Ray(Vec3(), Vec3(0.0, -1.0, 0.0)),
+        dirSampler, PathTraceSettings(1, 99)).radiance;
+    expect(dirLit.X() > 0.0,
+           "Scene integrates directional light radiance.");
+
+    Scene spotScene;
+    spotScene.addShape(std::unique_ptr<Shape>(
+        new Plane(Vec3(0.0, 0.0, 1.0), Vec3(0.0, 0.0, -1.0),
+                  Material::diffuse(Vec3(1.0, 1.0, 1.0)))));
+    spotScene.addLight(std::unique_ptr<LightSource>(
+        new SpotSource(
+            Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, -1.0),
+            Vec3(1.0, 1.0, 1.0), 100.0, 5.0, 0.1, 1.5)));
+    Sampler spotSampler(0, 1, 7);
+    const Vec3 spotLit = spotScene.trace(
+        Ray(Vec3(), Vec3(0.0, 0.0, -1.0)),
+        spotSampler, PathTraceSettings(1, 99)).radiance;
+    expect(spotLit.X() > 0.0,
+           "Scene integrates spot light radiance.");
+}
+
+void testAdaptiveSampling() {
+    AccumulationRecord record;
+    expect(record.sampleCount == 0,
+           "Accumulation records start with zero samples.");
+    expect(record.averaged().near(Vec3(), 1e-9),
+           "Zero-sample records average to zero.");
+
+    Vec3 values[4] = {
+        Vec3(0.2, 0.3, 0.4),
+        Vec3(0.6, 0.7, 0.8),
+        Vec3(0.4, 0.5, 0.6),
+        Vec3(0.8, 0.9, 1.0)
+    };
+    for (const auto& value : values) {
+        record.addSample(value);
+    }
+    expect(record.sampleCount == 4,
+           "Accumulation records count added samples.");
+    expect(record.averaged().near(
+               Vec3(0.5, 0.6, 0.7), 1e-9),
+           "Averaged output matches the arithmetic mean of added samples.");
+    expect(record.luminanceVariance() > 0.0,
+           "Non-constant luminance produces positive variance.");
+    expect(record.checkConvergence(2, 1.0, 1e-9, 0.01),
+           "A loose relative threshold marks a record converged.");
+    expect(record.converged,
+           "Convergence state is sticky after the first check passes.");
+
+    AccumulationRecord constant;
+    for (int i = 0; i < 10; ++i) {
+        constant.addSample(Vec3(0.5, 0.5, 0.5));
+    }
+    expect(constant.luminanceVariance() <= 1e-12,
+           "Constant-luminance samples produce near-zero variance.");
+    expect(constant.relativeError(0.01) <= 1e-12,
+           "Constant samples produce near-zero relative error.");
+    expect(constant.checkConvergence(4, 0.01, 0.001, 0.01),
+           "Constant samples converge at the minimum requirement.");
+    expect(constant.converged,
+           "Constant-sample convergence is recognized.");
+
+    AccumulationRecord fewSamples;
+    fewSamples.addSample(Vec3(0.1, 0.2, 0.3));
+    fewSamples.addSample(Vec3(0.9, 0.8, 0.7));
+    expect(!fewSamples.checkConvergence(999, 0.01, 1e-9, 0.01),
+           "Convergence check returns false when sample count is below minimum.");
+
+    RenderSettings adaptiveSettings;
+    adaptiveSettings.adaptiveSampling = true;
+    adaptiveSettings.adaptiveMinSamples = 8;
+    adaptiveSettings.adaptiveMaxSamples = 64;
+    adaptiveSettings.adaptiveBatch = 4;
+    adaptiveSettings.adaptiveRelativeError = 0.05;
+    adaptiveSettings.adaptiveAbsoluteError = 0.005;
+    adaptiveSettings.adaptiveLuminanceFloor = 0.01;
+    expect(adaptiveSettings.adaptiveMinSamples == 8,
+           "Adaptive settings store the minimum sample count.");
+    expect(adaptiveSettings.adaptiveMaxSamples == 64,
+           "Adaptive settings store the maximum sample count.");
+    expect(adaptiveSettings.adaptiveBatch == 4,
+           "Adaptive settings store the convergence batch.");
+    expect(!RenderSettings().adaptiveSampling,
+           "Adaptive sampling is disabled by default.");
+
+    expectThrows([]() {
+        ImageWriter writer("unused.ppm");
+        Scene scene;
+        Camera camera(Vec3(), Vec3(), 1, 1, PI * 0.5);
+        Renderer invalid(
+            writer, scene, camera,
+            RenderSettings(1, 0, 1, 1, 1, 1, 1, false, true, 16, 32, 0));
+        (void)invalid;
+    }, "Adaptive renderer rejects zero batch size.");
+}
+
+void testSimdAabb() {
+    const Aabb box(Vec3(-1.0, -1.0, -1.0), Vec3(1.0, 1.0, 1.0));
+
+    double ox[4] = {0, 0, 0, 3.0};
+    double oy[4] = {0, 0, 0, 0.0};
+    double oz[4] = {0, 0, 0, 0.0};
+    double idx[4] = {0, 0, 0, 1.0};
+    double idy[4] = {0, 0, 1.0, 0.0};
+    double idz[4] = {-1.0, 1.0, 0.0, 0.0};
+    double tmin[4] = {0, 0, 0, 0};
+    double tmax[4] = {100, 100, 100, 100};
+    bool resultsScalar[4] = {false, false, false, false};
+    bool resultsSimd[4] = {false, false, false, false};
+
+    SimdAabb::intersectScalar(
+        box, ox, oy, oz, idx, idy, idz, tmin, tmax, resultsScalar);
+
+    expect(resultsScalar[0] && resultsScalar[1] &&
+               resultsScalar[2] && !resultsScalar[3],
+           "Scalar slab test correctly classifies four rays.");
+
+#ifdef RAYTRACER_SIMD_ENABLED
+    SimdAabb::intersect4(
+        box, ox, oy, oz, idx, idy, idz, tmin, tmax, resultsSimd);
+    for (int i = 0; i < 4; ++i) {
+        expect(resultsSimd[i] == resultsScalar[i],
+               "SIMD packet intersection agrees with scalar result for ray " +
+                   std::to_string(i) + ".");
+    }
+#else
+    (void)resultsSimd;
+#endif
+}
+
+void testDenoising() {
+    const int w = 16;
+    const int h = 16;
+    std::vector<std::vector<Vec3>> color(
+        h, std::vector<Vec3>(w, Vec3(0.5, 0.5, 0.5)));
+    std::vector<std::vector<Vec3>> albedo = color;
+    std::vector<std::vector<Vec3>> normal(
+        h, std::vector<Vec3>(w, Vec3(0.0, 0.0, 1.0)));
+    std::vector<std::vector<Vec3>> position =
+        normal; // dummy position, same normal means no position edge
+    color[8][8] = Vec3(10.0, 0.0, 0.0); // firefly
+    std::vector<std::vector<Vec3>> output;
+
+    DenoiseSettings settings;
+    settings.enabled = true;
+    settings.iterations = 2;
+    settings.colorPhi = 0.5;
+    settings.normalPhi = 0.1;
+    settings.positionPhi = 1.0;
+
+    // Noisy gradient across the image — denoiser should smooth within same-normal regions
+    std::vector<std::vector<Vec3>> noisy(
+        h, std::vector<Vec3>(w));
+    for (int r = 0; r < h; ++r) {
+        for (int c = 0; c < w; ++c) {
+            double base = static_cast<double>(c) / w;
+            noisy[r][c] = Vec3(base, base * 0.5, base * 0.2) +
+                          Vec3((c % 3 - 1) * 0.05, (r % 3 - 1) * 0.05, 0.0);
+        }
+    }
+    ATrousDenoiser::denoise(noisy, albedo, normal, position,
+                            settings, output);
+    double rangeBefore = (noisy[7][0] - noisy[7][w-1]).getLength();
+    double rangeAfter = (output[7][0] - output[7][w-1]).getLength();
+    expect(rangeAfter > 0.0,
+           "Denoiser preserves overall gradient structure.");
+    expect(std::abs(rangeAfter - rangeBefore) < 0.2,
+           "Denoiser smooths mild noise without destroying gradients.");
+    expect(output.size() == static_cast<std::size_t>(h) &&
+               output[0].size() == static_cast<std::size_t>(w),
+           "Denoiser preserves image dimensions.");
+
+    std::vector<std::vector<Vec3>> uniformColor(
+        h, std::vector<Vec3>(w, Vec3(0.3, 0.6, 0.9)));
+    ATrousDenoiser::denoise(uniformColor, uniformColor,
+                            normal, position, settings, output);
+    expect(output[0][0].near(Vec3(0.3, 0.6, 0.9), 1e-6),
+           "Denoiser preserves uniform regions.");
+
+    std::vector<std::vector<Vec3>> leftColor(
+        h, std::vector<Vec3>(w, Vec3()));
+    std::vector<std::vector<Vec3>> rightNormal(
+        h, std::vector<Vec3>(w, Vec3(0.0, 0.0, 1.0)));
+    for (int r = 0; r < h; ++r) {
+        for (int c = 0; c < w; ++c) {
+            leftColor[r][c] = c < w / 2 ? Vec3(1.0, 0.0, 0.0)
+                                        : Vec3(0.0, 1.0, 0.0);
+            rightNormal[r][c] =
+                c < w / 2 ? Vec3(0.0, 0.0, 1.0)
+                          : Vec3(1.0, 0.0, 0.0);
+        }
+    }
+    std::vector<std::vector<Vec3>> edgeOutput;
+    ATrousDenoiser::denoise(leftColor, leftColor,
+                            rightNormal, position, settings, edgeOutput);
+    double midLeft = edgeOutput[8][7].X();
+    double midRight = edgeOutput[8][8].X();
+    expect(midLeft > 0.5 && midRight < 0.5,
+           "Denoiser respects normal-gated edges across dissimilar normals.");
+
+    DenoiseSettings disabled;
+    disabled.enabled = false;
+    std::vector<std::vector<Vec3>> passThrough;
+    ATrousDenoiser::denoise(color, albedo, normal, position,
+                            disabled, passThrough);
+    expect(passThrough[8][8].X() > 9.9,
+           "Disabled denoiser passes input through untouched.");
+}
+
 } // namespace
 
 int main() {
@@ -942,6 +1307,11 @@ int main() {
         testAccelerationStructures();
         testSceneCapabilityFeatures();
         testPerformanceQuickWins();
+        testJsonSceneLoading();
+        testDirectionalAndSpotLights();
+        testAdaptiveSampling();
+        testSimdAabb();
+        testDenoising();
     } catch (const std::exception& error) {
         std::cerr << "Unexpected test exception: " << error.what() << std::endl;
         return 1;

@@ -73,3 +73,29 @@ though exact identity is no longer an optimization requirement.
 
 The mesh benchmark still reports 10,000 matching hits for accelerated and
 linear traversal.
+
+## Phase 10 / v1.4 — SIMD AABB Prototype
+
+The standalone `SimdAabb` packet intersection was benchmarked on June 25, 2026
+using GCC 16.1.0, a Release build with AVX enabled (`-mavx -mfma -O3`). The
+benchmark pairs 1,000,000 rays into packets of 4 and tests slab intersection
+against 250,000 random axis-aligned boxes.
+
+| Mode | Time | Throughput | Hits |
+| --- | ---: | ---: | ---: |
+| Scalar (loop) | 0.006 s | 172 M rays/s | 4 |
+| AVX packet | 0.006 s | 167 M rays/s | 4 |
+
+Result agreement: **yes** — SIMD and scalar returned identical hit/miss decisions
+for all 1,000,000 rays.
+
+The SIMD packet traversal showed no meaningful throughput improvement (~0.97x).
+The per-call cost of packing four lanes into `__m256d` registers dominates the
+benefit of parallel slab evaluation. In a full BVH traversal the compiler's
+auto-vectorization of the scalar loop also eliminates much of the gap.
+
+**Feasibility gate not met.** The roadmap requires ≥1.25x end-to-end improvement
+before integrating packet traversal into the production BVH. SIMD AABB support
+remains as a prototype guarded by `RAYTRACER_SIMD` and excluded from the
+production integrator. Further gains would require keeping ray data in SIMD
+registers for an entire packet traversal, not rematerialising per AABB test.

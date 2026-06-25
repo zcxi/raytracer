@@ -349,11 +349,449 @@ small floating-point differences are acceptable when they improve throughput.
 - Performance is measured with counters disabled.
 - Standard-scene and mesh-heavy benchmarks improve over the v1.1 baseline.
 
-### Phase 9: Quality of life improvements
+## Phase 9: JSON Scene Description Format
 
-- Add a table to set objects on
-- Add output format in png or jpeg
-- Explore the use of Gpu Accelerated tracing
+**Target release: v1.3.**
+
+Replace hardcoded scene construction in `main.cpp` with versioned JSON scene
+files. A scene file should describe the camera, renderer defaults, environment,
+textures, materials, lights, geometry, transforms, and external assets without
+requiring the renderer to be recompiled.
+
+### Goals
+
+- Load a complete scene with `--scene-file path/to/scene.json`.
+- Keep rendering and scene construction separate from command-line parsing.
+- Migrate the existing demo and chessboard scenes to JSON without losing
+  features or visual quality.
+- Produce useful validation errors containing the JSON field and object name.
+- Resolve relative asset paths from the directory containing the scene file.
+- Use a versioned schema so future scene features can remain backward
+  compatible.
+
+### Proposed v1 document structure
+
+```json
+{
+  "version": 1,
+  "render": {
+    "width": 800,
+    "height": 600,
+    "samples": 128,
+    "maxBounces": 8,
+    "russianRouletteStart": 4,
+    "exposure": 0.3,
+    "toneMapper": "aces"
+  },
+  "camera": {
+    "position": [9.5, 7.2, 3.5],
+    "rotation": [-0.29, -0.42, 0.0],
+    "verticalFov": 0.785398,
+    "aperture": 0.08,
+    "focusDistance": 24.0,
+    "shutter": [0.0, 1.0]
+  },
+  "environment": {
+    "bottom": [0.035, 0.025, 0.02],
+    "top": [0.16, 0.20, 0.32],
+    "intensity": 1.0
+  },
+  "textures": {
+    "board-checker": {
+      "type": "checker",
+      "first": [0.78, 0.58, 0.31],
+      "second": [0.19, 0.055, 0.025],
+      "scale": 1.0
+    }
+  },
+  "materials": {
+    "ivory": {
+      "type": "principled",
+      "baseColor": [0.92, 0.84, 0.66],
+      "roughness": 0.18,
+      "metallic": 0.0,
+      "transmission": 0.0,
+      "ior": 1.5
+    }
+  },
+  "lights": [
+    {
+      "type": "point",
+      "position": [-5.5, 9.5, -16.0],
+      "color": [1.0, 0.78, 0.55],
+      "intensity": 8500.0
+    }
+  ],
+  "objects": [
+    {
+      "name": "white-king",
+      "type": "sphere",
+      "center": [0.5, 1.5, -14.5],
+      "radius": 0.18,
+      "material": "ivory",
+      "transform": {
+        "translation": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ]
+}
+```
+
+### Supported v1 resources
+
+- Textures: solid color, procedural checker, and PPM image texture.
+- Materials: diffuse, mirror, dielectric, and principled PBR.
+- Shapes: sphere, moving sphere, plane, rectangle, cube, rectangular prism,
+  pyramid, triangle, and OBJ mesh.
+- Transforms: translation, Euler rotation in radians, and non-uniform scale.
+- Lights: point lights and emissive sampleable geometry.
+- Environment: solid/gradient sky and optional lat-long environment map.
+- Camera: image dimensions, transform, field of view, aperture, focus distance,
+  and shutter interval.
+- Render defaults: samples, bounce limits, seed, tile size, preview interval,
+  exposure, tone mapper, output path, and statistics.
+
+### Implementation plan
+
+#### Step 1: JSON dependency and parsing foundation
+
+- Add a maintained JSON library through CMake, preferably `nlohmann/json`.
+- Create `SceneDescription/JsonHelpers` for required fields, optional fields,
+  vector/color parsing, numeric ranges, enum parsing, and contextual errors.
+- Require a top-level integer `version`; reject unsupported versions before
+  loading resources.
+- Add parser-only tests for valid JSON, malformed JSON, missing fields, invalid
+  vector lengths, unknown enum values, and non-finite numbers.
+
+#### Step 2: Separate loaded configuration from runtime objects
+
+- Introduce a `LoadedScene` result containing `Scene`, `Camera`,
+  `RenderSettings`, and `ImageOutputSettings`.
+- Add a `SceneLoader` interface with a JSON implementation so parsing is not
+  coupled to `main.cpp`.
+- Move reusable scene-construction helpers out of `main.cpp`.
+- Preserve command-line overrides: explicit CLI values should override values
+  supplied by the JSON file.
+
+#### Step 3: Resource registries
+
+- Parse textures first into a named
+  `unordered_map<string, shared_ptr<Texture>>`.
+- Parse materials second and resolve optional texture references by name.
+- Reject duplicate names and unresolved references with messages such as
+  `materials.board.texture references unknown texture "oak"`.
+- Keep shared textures alive through material ownership.
+
+#### Step 4: Geometry and transform factories
+
+- Implement one factory per shape type with strict required/optional fields.
+- Resolve each object's material name and construct the corresponding `Shape`.
+- Wrap geometry in `Transform` only when a transform block is present.
+- Support OBJ paths relative to the scene file and report asset-loading failures
+  with both the object name and resolved path.
+- Add shape-factory tests comparing JSON-created intersections and bounds with
+  directly constructed C++ shapes.
+
+#### Step 5: Camera, lighting, and environment
+
+- Parse point lights and add them through `Scene::addLight`.
+- Allow emissive geometry to continue registering itself automatically.
+- Parse gradient colors, intensity, and optional environment-map path.
+- Build the camera only after validating dimensions, lens values, field of
+  view, and shutter interval.
+
+#### Step 6: CLI integration
+
+- Add `--scene-file FILE` as the primary scene-loading option.
+- Keep `--scene demo` and `--scene chessboard` temporarily as compatibility
+  aliases that resolve to bundled JSON files.
+- Define precedence as: engine defaults, then JSON values, then explicit CLI
+  overrides.
+- Add `--validate-scene FILE` to parse and validate without rendering.
+- Print a concise load summary with object, light, material, texture, and BVH
+  counts.
+
+#### Step 7: Migrate bundled scenes
+
+- Create `scenes/demo.json` and `scenes/chessboard.json`.
+- Remove the large hardcoded `demo1()` and `chessboard()` construction blocks
+  after their JSON replacements are verified.
+- Keep generated/repeated chess-piece geometry manageable through one of:
+  object prototypes plus instances, reusable groups, or a small `include`
+  mechanism. Choose one feature for schema v1 rather than duplicating hundreds
+  of object definitions.
+- Resolve included files relative to their parent and detect include cycles.
+
+#### Step 8: Validation and regression coverage
+
+- Test every supported texture, material, shape, light, environment, and camera
+  field.
+- Test duplicate names, missing references, unsupported versions, malformed
+  transforms, missing files, include cycles, and invalid numeric ranges.
+- Render small deterministic JSON scenes and compare them with equivalent C++
+  scene construction within a numerical or perceptual tolerance.
+- Run AddressSanitizer/UBSan where available and verify failed loads release all
+  partially created resources.
+
+### Acceptance criteria
+
+- `raytracer output.png --scene-file scenes/chessboard.json` renders the complete
+  chess scene without scene-specific C++ construction code.
+- Bundled demo and chessboard scenes are represented entirely by JSON and
+  external assets.
+- All currently supported camera, environment, material, texture, light, shape,
+  transform, and render settings can be represented.
+- Invalid files fail before rendering with the scene path and precise JSON field
+  in the error.
+- Relative OBJ, texture, environment-map, and included-scene paths work from any
+  current working directory.
+- CLI overrides are documented and covered by tests.
+- Loading occurs once before rendering and has no measurable effect on tracing
+  throughput.
+
+### Deferred beyond v1
+
+- JSON Schema generation and editor autocomplete.
+- glTF scene import.
+- Animation tracks and keyframes.
+- Arbitrary user-defined procedural geometry or material graphs.
+- GPU-specific scene packing.
+
+## Phase 10: Adaptive Sampling and Lighting Efficiency
+
+**Target release: v1.4.**
+
+Reduce wasted samples and shadow work while expanding practical lighting
+controls. This milestone includes only features that have a credible path to
+better image quality per unit of render time. Optimizations must be benchmarked
+independently and retain a scalar fallback.
+
+### Scope decisions
+
+- Implement adaptive sampling using measured variance, not pixel darkness alone.
+  Dark pixels may receive more samples only when their relative noise estimate
+  remains high.
+- Implement directional and spot lights because they add useful scene controls
+  and fit the existing `LightSource` abstraction.
+- Implement finite-light influence culling for point and spot lights before
+  creating shadow rays.
+- Do not describe directional sunlight as range- or frustum-culled: it has
+  infinite reach. Directional shadow rays may instead use the finite scene
+  bounds to choose a safe maximum distance.
+- Prototype SIMD BVH packet traversal only for coherent ray batches. Ship it
+  only if end-to-end benchmarks improve; keep scalar traversal for divergent
+  secondary rays and unsupported standard libraries.
+
+## Workstream A: Adaptive sampling
+
+### Design
+
+- Track each pixel's sample count, running mean radiance, and luminance variance
+  using Welford's numerically stable online algorithm.
+- Begin testing convergence only after a configurable minimum sample count.
+- Estimate error using standard error or a confidence interval:
+  `sqrt(variance / sampleCount)`.
+- Normalize error by a luminance floor so dark pixels are judged by relative
+  noise without dividing by values close to zero.
+- Mark a pixel converged when both absolute and relative error thresholds are
+  satisfied.
+- Continue sampling unconverged pixels until they converge or reach the maximum
+  samples per pixel.
+- Evaluate convergence in small batches, such as every 4 or 8 samples, rather
+  than after every sample.
+
+### Renderer changes
+
+- Replace the single global completed-sample count with per-pixel sample counts.
+- Add accumulation records containing RGB sum, luminance mean, luminance `M2`,
+  sample count, and convergence state.
+- Change tile work generation so workers skip converged pixels and retire tiles
+  when all pixels inside them converge.
+- Update image writing to divide each pixel by its own completed sample count.
+- Preserve the existing fixed-sample path when adaptive sampling is disabled.
+
+### Configuration
+
+- Add render settings and JSON fields:
+  - `adaptiveSampling`
+  - `minSamples`
+  - `maxSamples`
+  - `sampleBatch`
+  - `relativeError`
+  - `absoluteError`
+  - `luminanceFloor`
+- Add CLI overrides such as `--adaptive`, `--min-samples`,
+  `--max-samples`, and `--noise-threshold`.
+- Print average samples per pixel, converged-pixel percentage, and samples saved.
+
+### Validation
+
+- Unit-test Welford updates with known sample sequences.
+- Verify constant-color pixels converge at the minimum sample count.
+- Verify deliberately noisy pixels continue toward the maximum.
+- Ensure zero-luminance and firefly samples do not produce NaNs or premature
+  convergence.
+- Compare adaptive renders with fixed high-sample references using RMSE and a
+  perceptual metric.
+
+### Acceptance criteria
+
+- Smooth regions use substantially fewer samples than high-variance edges,
+  glossy reflections, depth-of-field transitions, and dark indirect-light
+  regions.
+- Representative scenes render at least 1.5x faster at comparable measured
+  error, or achieve lower error in the same render time.
+- No pixel receives fewer than `minSamples` or more than `maxSamples`.
+- Disabling adaptive sampling preserves the existing fixed-sample behavior.
+
+## Workstream B: Directional and spot lights
+
+### Light sampling interface
+
+- Replace the point-light-specific renderer path with a common light sample
+  result containing direction, radiance, maximum shadow distance, and validity.
+- Add a virtual method such as
+  `bool sampleIncident(const Vec3& point, LightSample& sample) const`.
+- Keep point, spot, and directional light evaluation outside the BSDF so all
+  light types share visibility and shading code.
+- Remove assumptions that every analytic light has a finite position.
+
+### Directional light
+
+- Store a normalized direction toward the light, color, and irradiance.
+- Return constant incoming radiance independent of the hit-point position.
+- Use an infinite shadow distance when the scene has unbounded geometry.
+- When all shadow-casting geometry is bounded, intersect the shadow ray with the
+  scene's aggregate bounds and use the exit distance as a safe finite limit.
+- Expose JSON fields `type: "directional"`, `direction`, `color`, and
+  `irradiance`.
+
+### Spot light
+
+- Store position, normalized forward direction, intensity, maximum range, inner
+  cone angle, and outer cone angle.
+- Apply inverse-square attenuation inside the range.
+- Use smooth interpolation between the inner and outer cones to avoid a hard
+  lighting edge.
+- Reject points behind the light, outside its range, or outside its outer cone
+  before any visibility query.
+- Expose JSON fields `type: "spot"`, `position`, `direction`, `color`,
+  `intensity`, `range`, `innerAngle`, and `outerAngle`.
+
+### Validation
+
+- Test directional-light invariance with hit-point distance.
+- Test spot-light center, penumbra, outer-cone, behind-light, and range cases.
+- Test invalid zero directions, negative intensity/range, and reversed cone
+  angles.
+- Render focused references for sunlight shadows and a spot-lit object.
+
+## Workstream C: Light-influence and shadow-ray culling
+
+This replaces the proposed "sunlight frustum culling" with checks that are
+geometrically valid for each light type.
+
+### Required culling
+
+- Reject every analytic light when `normal dot lightDirection <= 0`.
+- Reject point and spot lights outside an optional finite influence radius.
+- Reject spot lights outside the outer cone before BSDF evaluation or shadow-ray
+  construction.
+- Reject lights whose attenuated radiance is below a configurable conservative
+  threshold only if the threshold is disabled by default and tested for bias.
+- Set point/spot shadow-ray `tMax` to distance minus epsilon.
+- Bound directional shadow rays by aggregate scene bounds only when all relevant
+  occluders are bounded; otherwise retain infinity.
+
+### Optional spatial light culling
+
+- If scenes gain hundreds of finite lights, add a light BVH or clustered
+  world-space grid keyed by influence bounds.
+- Do not implement a light acceleration structure for the current small-light
+  scenes unless profiling shows analytic-light iteration is material.
+
+### Counters
+
+- Add opt-in statistics for considered lights, range rejects, cone rejects,
+  back-facing rejects, emitted shadow rays, and occluded shadow rays.
+- Use the counters to prove that culling reduces shadow work without changing
+  uncullable light contributions.
+
+## Workstream D: SIMD BVH packet traversal
+
+### Feasibility gate
+
+- Detect usable C++26 `<simd>` support at configure time.
+- Compile a scalar fallback on compilers or standard libraries without
+  `std::simd`.
+- Benchmark a standalone packet traversal prototype before changing the
+  production integrator.
+- Require a meaningful end-to-end gain, not merely a faster synthetic AABB loop.
+
+### Packet design
+
+- Start with packets of 4 or 8 coherent primary rays from adjacent pixels in a
+  tile.
+- Store packet origins, reciprocal directions, active-lane masks, and closest
+  distances in structure-of-arrays form.
+- Test one BVH node against all active lanes using `std::simd`.
+- Maintain lane masks per child and compact or split packets only when needed.
+- Fall back to scalar traversal when too few lanes remain active.
+- Keep secondary, reflection, refraction, and diffuse bounce rays scalar until
+  profiling demonstrates useful coherence.
+
+### Integration plan
+
+1. Add an isolated `SimdAabb` benchmark comparing scalar and packet slab tests.
+2. Add `Bvh::intersectPacket()` for closest-hit primary rays only.
+3. Generate neighboring primary rays in packet-width groups inside each tile.
+4. Verify packet and scalar hit identity within numerical tolerance.
+5. Benchmark simple primitives, dense meshes, depth of field, and motion blur.
+6. Enable packet traversal only for workloads where it wins; expose a diagnostic
+   switch to force scalar or SIMD mode.
+
+### SIMD acceptance criteria
+
+- Scalar traversal remains the default fallback and passes all existing tests.
+- Packet traversal returns the same hit/miss decisions and nearest distances
+  within tolerance.
+- Coherent primary-ray benchmarks improve by at least 1.25x end to end.
+- Depth-of-field or highly divergent workloads do not regress by more than 5%;
+  otherwise they automatically use scalar traversal.
+- If the feasibility gate is not met, document the prototype results and defer
+  production SIMD integration rather than shipping extra complexity.
+
+## Milestone 10 implementation order
+
+1. Add adaptive accumulation records and fixed-path compatibility tests.
+2. Implement batched convergence checks and adaptive tile scheduling.
+3. Generalize `LightSource` around incident-light samples.
+4. Add directional and spot lights with unit/reference tests.
+5. Add finite-light range/cone/back-face culling and counters.
+6. Add aggregate scene bounds for directional shadow limits where valid.
+7. Benchmark adaptive sampling and light culling independently.
+8. Prototype `std::simd` AABB packets behind a build feature check.
+9. Integrate packet primary traversal only if the feasibility criteria pass.
+10. Add Phase 10 fields to the JSON scene format after Phase 9 lands.
+
+## Milestone 10 acceptance criteria
+
+- Adaptive sampling and all new light types are configurable through JSON.
+- Fixed and adaptive render modes both remain available.
+- Directional and spot lights integrate with direct lighting, shadows, and
+  tracing statistics.
+- Point/spot influence culling measurably reduces unnecessary shadow rays.
+- Benchmarks report image error, average samples per pixel, shadow rays saved,
+  and render-time changes.
+- SIMD support is optional, benchmark-gated, and never required for correctness.
+
+## Phase 11: Future quality-of-life and platform work
+
+- Explore GPU-accelerated tracing.
+- Add scene editor tooling and live reload.
+- Add additional output formats and metadata controls.
 
 ## Suggested Release Milestones
 
@@ -392,3 +830,14 @@ Completed June 24, 2026.
 ### v1.2 — Relaxed Performance Tuning
 
 Completed June 25, 2026.
+
+### v1.3 — JSON Scene Descriptions
+
+Complete Phase 9 with versioned JSON loading, resource registries, scene
+validation, CLI overrides, and JSON migrations of the demo and chessboard.
+
+### v1.4 — Adaptive Sampling and Lighting Efficiency
+
+Complete Phase 10 with variance-guided adaptive sampling, directional and spot
+lights, finite-light influence culling, and benchmark-gated SIMD primary-ray
+traversal.

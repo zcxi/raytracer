@@ -1,0 +1,516 @@
+{
+  "version": 1,
+  "render": {
+    "width": 800,
+    "height": 600,
+    "samples": 64,
+    "previewInterval": 8,
+    "seed": 3,
+    "maxBounces": 6,
+    "russianRouletteStart": 4,
+    "tileSize": 16,
+    "exposure": 0.3,
+    "toneMapper": "aces"
+  },
+  "camera": {
+    "position": [9.5, 7.2, 3.5],
+    "rotation": [-0.29, -0.42, 0.0],
+    "verticalFov": 0.7853981633974483,
+    "aperture": 0.08,
+    "focusDistance": 24.0,
+    "shutter": [0.0, 1.0]
+  },
+  "environment": {
+    "bottom": [0.035, 0.025, 0.02],
+    "top": [0.16, 0.20, 0.32],
+    "intensity": 1.0
+  },
+  "materials": {
+    "board-wood": {
+      "type": "principled",
+      "baseColor": [0.25, 0.095, 0.035],
+      "roughness": 0.42
+    },
+    "dark-wood": {
+      "type": "principled",
+      "baseColor": [0.09, 0.025, 0.012],
+      "roughness": 0.5
+    },
+    "light-square": {
+      "type": "principled",
+      "baseColor": [0.78, 0.58, 0.31],
+      "roughness": 0.5
+    },
+    "dark-square": {
+      "type": "principled",
+      "baseColor": [0.19, 0.055, 0.025],
+      "roughness": 0.46
+    },
+    "ivory": {
+      "type": "principled",
+      "baseColor": [0.92, 0.84, 0.66],
+      "roughness": 0.18
+    },
+    "ebony": {
+      "type": "principled",
+      "baseColor": [0.025, 0.018, 0.014],
+      "roughness": 0.13,
+      "metallic": 0.08
+    },
+    "wall": {
+      "type": "principled",
+      "baseColor": [0.32, 0.27, 0.24],
+      "roughness": 0.88
+    },
+    "floor": {
+      "type": "principled",
+      "baseColor": [0.12, 0.10, 0.09],
+      "roughness": 0.9
+    }
+  },
+  "prototypes": {
+    "light-square": {
+      "type": "rectangularPrism",
+      "center": [0.0, 0.42, 0.0],
+      "dimensions": [0.96, 0.08, 0.96],
+      "material": "light-square"
+    },
+    "dark-square": {
+      "type": "rectangularPrism",
+      "center": [0.0, 0.42, 0.0],
+      "dimensions": [0.96, 0.08, 0.96],
+      "material": "dark-square"
+    },
+    "piece-base": {
+      "type": "group",
+      "children": [
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 0.58, 0.0],
+            "scale": [0.38, 0.10, 0.38]
+          }
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 0.68, 0.0],
+          "dimensions": [0.42, 0.10, 0.42],
+          "material": "ivory"
+        }
+      ]
+    },
+    "pawn": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 0.87, 0.0],
+          "dimensions": [0.20, 0.33, 0.20],
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.03, 0.0],
+            "scale": [0.25, 0.12, 0.25]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.20, 0.0],
+          "radius": 0.20,
+          "material": "ivory"
+        }
+      ]
+    },
+    "rook": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 0.98, 0.0],
+          "dimensions": [0.33, 0.55, 0.33],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.28, 0.0],
+          "dimensions": [0.58, 0.14, 0.58],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [-0.20, 1.41, -0.20],
+          "dimensions": [0.16, 0.18, 0.16],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.20, 1.41, -0.20],
+          "dimensions": [0.16, 0.18, 0.16],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [-0.20, 1.41, 0.20],
+          "dimensions": [0.16, 0.18, 0.16],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.20, 1.41, 0.20],
+          "dimensions": [0.16, 0.18, 0.16],
+          "material": "ivory"
+        }
+      ]
+    },
+    "knight-forward": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 0.0, 0.0],
+          "dimensions": [0.28, 0.72, 0.36],
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.02, 0.0],
+            "rotation": [0.32, 0.0, 0.0]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.41, -0.14],
+            "scale": [0.25, 0.25, 0.34]
+          }
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.48, -0.35],
+          "dimensions": [0.24, 0.18, 0.30],
+          "material": "ivory"
+        }
+      ]
+    },
+    "knight-backward": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 0.0, 0.0],
+          "dimensions": [0.28, 0.72, 0.36],
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.02, 0.0],
+            "rotation": [-0.32, 0.0, 0.0]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.41, 0.14],
+            "scale": [0.25, 0.25, 0.34]
+          }
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.48, 0.35],
+          "dimensions": [0.24, 0.18, 0.30],
+          "material": "ivory"
+        }
+      ]
+    },
+    "bishop": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.02, 0.0],
+          "dimensions": [0.24, 0.60, 0.24],
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.28, 0.0],
+            "scale": [0.31, 0.16, 0.31]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.46, 0.0],
+          "radius": 0.22,
+          "material": "ivory"
+        },
+        {
+          "type": "pyramid",
+          "baseCenter": [0.0, 1.58, 0.0],
+          "width": 0.20,
+          "depth": 0.20,
+          "height": 0.34,
+          "material": "ivory"
+        }
+      ]
+    },
+    "queen": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.10, 0.0],
+          "dimensions": [0.27, 0.70, 0.27],
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.41, 0.0],
+            "scale": [0.36, 0.16, 0.36]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.60, 0.0],
+          "radius": 0.20,
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.22, 1.75, 0.0],
+          "radius": 0.095,
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [-0.22, 1.75, 0.0],
+          "radius": 0.095,
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.75, 0.22],
+          "radius": 0.095,
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.75, -0.22],
+          "radius": 0.095,
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.84, 0.0],
+          "radius": 0.10,
+          "material": "ivory"
+        }
+      ]
+    },
+    "king": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "piece-base"},
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.12, 0.0],
+          "dimensions": [0.29, 0.75, 0.29],
+          "material": "ivory"
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 0.0, 0.0],
+          "radius": 1.0,
+          "material": "ivory",
+          "transform": {
+            "translation": [0.0, 1.46, 0.0],
+            "scale": [0.35, 0.17, 0.35]
+          }
+        },
+        {
+          "type": "sphere",
+          "center": [0.0, 1.64, 0.0],
+          "radius": 0.18,
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.89, 0.0],
+          "dimensions": [0.10, 0.42, 0.10],
+          "material": "ivory"
+        },
+        {
+          "type": "rectangularPrism",
+          "center": [0.0, 1.94, 0.0],
+          "dimensions": [0.34, 0.10, 0.10],
+          "material": "ivory"
+        }
+      ]
+    }
+  },
+  "lights": [
+    {
+      "type": "point",
+      "position": [-5.5, 9.5, -16.0],
+      "color": [1.0, 0.78, 0.55],
+      "intensity": 8500.0
+    },
+    {
+      "type": "point",
+      "position": [8.5, 5.5, -19.5],
+      "color": [0.48, 0.65, 1.0],
+      "intensity": 4200.0
+    }
+  ],
+  "objects": [
+    {
+      "name": "board",
+      "type": "rectangularPrism",
+      "center": [0.0, 0.0, -18.0],
+      "dimensions": [9.4, 0.75, 9.4],
+      "material": "board-wood"
+    },
+    {
+      "name": "board-inset",
+      "type": "rectangularPrism",
+      "center": [0.0, -0.43, -18.0],
+      "dimensions": [8.7, 0.14, 8.7],
+      "material": "dark-wood"
+    },
+
+    {"type": "instance", "prototype": "light-square", "translation": [-3.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-2.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-1.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-0.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [0.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [1.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [2.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [3.5, 0.0, -21.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-3.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-2.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-1.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-0.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [0.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [1.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [2.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [3.5, 0.0, -20.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-3.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-2.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-1.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-0.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [0.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [1.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [2.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [3.5, 0.0, -19.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-3.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-2.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-1.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-0.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [0.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [1.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [2.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [3.5, 0.0, -18.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-3.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-2.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-1.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-0.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [0.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [1.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [2.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [3.5, 0.0, -17.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-3.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-2.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-1.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-0.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [0.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [1.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [2.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [3.5, 0.0, -16.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-3.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-2.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-1.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-0.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [0.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [1.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [2.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [3.5, 0.0, -15.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-3.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-2.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [-1.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [-0.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [0.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [1.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "dark-square", "translation": [2.5, 0.0, -14.5]},
+    {"type": "instance", "prototype": "light-square", "translation": [3.5, 0.0, -14.5]},
+
+    {"type": "rectangularPrism", "center": [0.0, 0.49, -22.18], "dimensions": [9.25, 0.18, 0.30], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [0.0, 0.49, -13.82], "dimensions": [9.25, 0.18, 0.30], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [-4.18, 0.49, -18.0], "dimensions": [0.30, 0.18, 8.65], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [4.18, 0.49, -18.0], "dimensions": [0.30, 0.18, 8.65], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [0.0, -0.72, -18.0], "dimensions": [10.2, 0.22, 10.2], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [-4.25, -2.7, -22.25], "dimensions": [0.48, 3.8, 0.48], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [4.25, -2.7, -22.25], "dimensions": [0.48, 3.8, 0.48], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [-4.25, -2.7, -13.75], "dimensions": [0.48, 3.8, 0.48], "material": "dark-wood"},
+    {"type": "rectangularPrism", "center": [4.25, -2.7, -13.75], "dimensions": [0.48, 3.8, 0.48], "material": "dark-wood"},
+
+    {"type": "instance", "prototype": "rook", "translation": [-3.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "knight-backward", "translation": [-2.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "bishop", "translation": [-1.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "queen", "translation": [-0.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "king", "translation": [0.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "bishop", "translation": [1.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "knight-backward", "translation": [2.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "rook", "translation": [3.5, 0.0, -21.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [-3.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [-2.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [-1.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [-0.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [0.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [1.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [2.5, 0.0, -20.5], "material": "ebony"},
+    {"type": "instance", "prototype": "pawn", "translation": [3.5, 0.0, -20.5], "material": "ebony"},
+
+    {"type": "instance", "prototype": "pawn", "translation": [-3.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [-2.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [-1.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [-0.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [0.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [1.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [2.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "pawn", "translation": [3.5, 0.0, -15.5], "material": "ivory"},
+    {"type": "instance", "prototype": "rook", "translation": [-3.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "knight-forward", "translation": [-2.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "bishop", "translation": [-1.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "queen", "translation": [-0.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "king", "translation": [0.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "bishop", "translation": [1.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "knight-forward", "translation": [2.5, 0.0, -14.5], "material": "ivory"},
+    {"type": "instance", "prototype": "rook", "translation": [3.5, 0.0, -14.5], "material": "ivory"},
+
+    {"type": "plane", "normal": [0.0, 0.0, 1.0], "point": [0.0, 0.0, -25.0], "material": "wall"},
+    {"type": "plane", "normal": [0.0, 1.0, 0.0], "point": [0.0, -4.62, -18.0], "material": "floor"}
+  ]
+}

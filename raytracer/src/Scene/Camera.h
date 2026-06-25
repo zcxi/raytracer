@@ -27,6 +27,10 @@ class Camera {
         int getImageWidth() const { return imageWidth; }
         int getImageHeight() const { return imageHeight; }
         double getFov() const { return fov; }
+        double getAperture() const { return aperture; }
+        double getFocusDistance() const { return focusDistance; }
+        double getShutterOpen() const { return shutterOpen; }
+        double getShutterClose() const { return shutterClose; }
         Ray makeRay(double pixelX, double pixelY) const;
         Ray makeRay(double pixelX, double pixelY, Sampler& sampler) const;
 

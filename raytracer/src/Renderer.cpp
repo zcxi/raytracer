@@ -34,6 +34,17 @@ Renderer::Renderer(ImageWriter& writer, const Scene& sceneRef,
     if (settings.tileSize == 0) {
         throw std::invalid_argument("Tile size must be positive.");
     }
+    if (settings.adaptiveSampling) {
+        if (settings.adaptiveMinSamples == 0 ||
+            settings.adaptiveMinSamples > settings.adaptiveMaxSamples) {
+            throw std::invalid_argument(
+                "Adaptive min samples must be positive and <= max samples.");
+        }
+        if (settings.adaptiveBatch == 0) {
+            throw std::invalid_argument(
+                "Adaptive sample batch must be positive.");
+        }
+    }
 }
 
 Renderer::~Renderer() {
@@ -99,7 +110,11 @@ void Renderer::renderTiles(
             for (int column = startX; column < endX; ++column) {
                 const std::size_t index =
                     static_cast<std::size_t>(row) * width + column;
-                Vec3 accumulated = accumulationBuffer[row][column];
+                AccumulationRecord& record =
+                    accumulationBuffer[row][column];
+                if (settings.adaptiveSampling && record.converged) {
+                    continue;
+                }
                 for (unsigned int offset = 0;
                      offset < sampleCount; ++offset) {
                     const unsigned int sampleIndex =
@@ -110,16 +125,75 @@ void Renderer::renderTiles(
                     const double offsetY = sampler.next();
                     const Ray ray = camera.makeRay(
                         column + offsetX, row + offsetY, sampler);
-                    accumulated = accumulated + scene.trace(
+                    const PathResult pathResult = scene.trace(
                         ray, sampler,
                         PathTraceSettings(
                             settings.maxBounces,
                             settings.russianRouletteStart));
+                    record.addSample(
+                        pathResult.radiance, pathResult.albedo,
+                        pathResult.normal, pathResult.position);
                 }
-                accumulationBuffer[row][column] = accumulated;
+                if (settings.adaptiveSampling) {
+                    record.checkConvergence(
+                        settings.adaptiveMinSamples,
+                        settings.adaptiveRelativeError,
+                        settings.adaptiveAbsoluteError,
+                        settings.adaptiveLuminanceFloor);
+                }
             }
         }
     }
+}
+
+unsigned int Renderer::convergedPixelCount() const {
+    unsigned int count = 0;
+    for (const auto& row : accumulationBuffer) {
+        for (const auto& record : row) {
+            if (record.converged) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+void Renderer::writeAdaptiveOutput(unsigned int maxSamples) {
+    std::vector<std::vector<Vec3>> result = prepareOutput();
+    imageWriter.writeAdaptive(result, maxSamples);
+}
+
+std::vector<std::vector<Vec3>> Renderer::prepareOutput() const {
+    const int height = camera.getImageHeight();
+    const int width = camera.getImageWidth();
+    std::vector<std::vector<Vec3>> color(
+        height, std::vector<Vec3>(width));
+    std::vector<std::vector<Vec3>> albedo(
+        height, std::vector<Vec3>(width));
+    std::vector<std::vector<Vec3>> normal(
+        height, std::vector<Vec3>(width));
+    std::vector<std::vector<Vec3>> position(
+        height, std::vector<Vec3>(width));
+
+    for (int r = 0; r < height; ++r) {
+        for (int c = 0; c < width; ++c) {
+            const AccumulationRecord& record =
+                accumulationBuffer[r][c];
+            color[r][c] = record.averaged();
+            albedo[r][c] = record.averagedAlbedo();
+            Vec3 avgN = record.averagedNormal();
+            double nlen = avgN.getLength();
+            normal[r][c] = nlen > 1e-9 ? avgN / nlen : Vec3();
+            position[r][c] = record.averagedPosition();
+        }
+    }
+
+    if (settings.denoise.enabled) {
+        ATrousDenoiser::denoise(
+            color, albedo, normal, position,
+            settings.denoise, color);
+    }
+    return color;
 }
 
 void Renderer::workerLoop(unsigned int workerIndex) {
@@ -212,38 +286,91 @@ void Renderer::render() {
     const int height = camera.getImageHeight();
     const int width = camera.getImageWidth();
     accumulationBuffer.assign(
-        height, std::vector<Vec3>(width, Vec3()));
+        height,
+        std::vector<AccumulationRecord>(width, AccumulationRecord()));
     scene.finalize();
     startWorkers();
 
     try {
-        unsigned int completedSamples = 0;
-        while (completedSamples < settings.samplesPerPixel) {
-            const unsigned int remaining =
-                settings.samplesPerPixel - completedSamples;
-            const unsigned int batchSize =
-                settings.previewInterval == 0
-                    ? remaining
-                    : std::min(settings.previewInterval, remaining);
-            const double passSeconds =
-                renderPass(completedSamples, batchSize);
-            completedSamples += batchSize;
-            const bool finalPass =
-                completedSamples == settings.samplesPerPixel;
-            const bool previewPass =
-                settings.previewInterval > 0 &&
-                completedSamples % settings.previewInterval == 0;
-            if (finalPass || previewPass) {
-                if (!imageWriter.writeAccumulation(
-                        accumulationBuffer, completedSamples)) {
-                    throw std::runtime_error(
-                        "Failed to write rendered image.");
+        if (settings.adaptiveSampling) {
+            unsigned int completedSamples = 0;
+            unsigned int totalPixels =
+                static_cast<unsigned int>(width) * height;
+            unsigned int previewCountdown = settings.previewInterval > 0
+                                                ? settings.previewInterval
+                                                : settings.adaptiveBatch;
+            while (completedSamples < settings.adaptiveMaxSamples) {
+                unsigned int batchSize = settings.adaptiveBatch;
+                if (completedSamples + batchSize >
+                    settings.adaptiveMaxSamples) {
+                    batchSize = settings.adaptiveMaxSamples -
+                                completedSamples;
                 }
-                std::cout << "Rendered " << completedSamples << "/"
-                          << settings.samplesPerPixel
-                          << " samples per pixel. Last pass: "
-                          << std::fixed << std::setprecision(3)
-                          << passSeconds << " s." << std::endl;
+                unsigned int converged = convergedPixelCount();
+                if (converged >= totalPixels &&
+                    completedSamples >= settings.adaptiveMinSamples) {
+                    break;
+                }
+                double passSeconds =
+                    renderPass(completedSamples, batchSize);
+                completedSamples += batchSize;
+                unsigned int passConverged = convergedPixelCount();
+                previewCountdown -= batchSize;
+                bool finalPass =
+                    completedSamples >= settings.adaptiveMaxSamples ||
+                    (passConverged >= totalPixels &&
+                     completedSamples >= settings.adaptiveMinSamples);
+                if (finalPass || previewCountdown <= 0) {
+                    writeAdaptiveOutput(completedSamples);
+                    previewCountdown = settings.previewInterval > 0
+                                           ? settings.previewInterval
+                                           : settings.adaptiveBatch;
+                    unsigned int activePixels = totalPixels - passConverged;
+                    std::cout << "Rendered " << completedSamples
+                              << "/" << settings.adaptiveMaxSamples
+                              << " spp; " << passConverged << "/"
+                              << totalPixels << " converged"
+                              << " (" << activePixels << " active)"
+                              << ". Last pass: " << std::fixed
+                              << std::setprecision(3) << passSeconds
+                              << " s." << std::endl;
+                }
+                if (passConverged >= totalPixels &&
+                    completedSamples >= settings.adaptiveMinSamples) {
+                    break;
+                }
+            }
+        } else {
+            unsigned int completedSamples = 0;
+            while (completedSamples < settings.samplesPerPixel) {
+                const unsigned int remaining =
+                    settings.samplesPerPixel - completedSamples;
+                const unsigned int batchSize =
+                    settings.previewInterval == 0
+                        ? remaining
+                        : std::min(settings.previewInterval, remaining);
+                const double passSeconds =
+                    renderPass(completedSamples, batchSize);
+                completedSamples += batchSize;
+                const bool finalPass =
+                    completedSamples == settings.samplesPerPixel;
+                const bool previewPass =
+                    settings.previewInterval > 0 &&
+                    completedSamples % settings.previewInterval == 0;
+                if (finalPass || previewPass) {
+                    std::vector<std::vector<Vec3>> result =
+                        prepareOutput();
+                    if (!imageWriter.writeAccumulation(
+                            result, completedSamples)) {
+                        throw std::runtime_error(
+                            "Failed to write rendered image.");
+                    }
+                    std::cout << "Rendered " << completedSamples << "/"
+                              << settings.samplesPerPixel
+                              << " samples per pixel. Last pass: "
+                              << std::fixed << std::setprecision(3)
+                              << passSeconds << " s." << std::endl;
+                }
             }
         }
     } catch (...) {
@@ -251,11 +378,15 @@ void Renderer::render() {
         throw;
     }
     stopWorkers();
+
     const std::chrono::duration<double> elapsed =
         std::chrono::steady_clock::now() - renderStart;
-    const double primarySamples =
-        static_cast<double>(width) * height *
-        settings.samplesPerPixel;
+    unsigned int effectiveSamples =
+        settings.adaptiveSampling
+            ? settings.adaptiveMaxSamples
+            : settings.samplesPerPixel;
+    double primarySamples =
+        static_cast<double>(width) * height * effectiveSamples;
     std::cout << "Render time: " << std::fixed
               << std::setprecision(3) << elapsed.count()
               << " s; primary samples: "
@@ -264,6 +395,25 @@ void Renderer::render() {
               << primarySamples / std::max(0.001, elapsed.count()) / 1e6
               << " M samples/s; BVH nodes: "
               << scene.bvhNodeCount();
+    if (settings.adaptiveSampling) {
+        unsigned int totalPixels =
+            static_cast<unsigned int>(width) * height;
+        unsigned int converged = convergedPixelCount();
+        double avgSamples = 0.0;
+        double maxActualSamples = 0.0;
+        for (const auto& row : accumulationBuffer) {
+            for (const auto& record : row) {
+                avgSamples += record.sampleCount;
+                if (record.sampleCount > maxActualSamples) {
+                    maxActualSamples =
+                        record.sampleCount;
+                }
+            }
+        }
+        avgSamples /= totalPixels;
+        std::cout << "; converged: " << converged << "/" << totalPixels
+                  << "; avg spp: " << std::setprecision(1) << avgSamples;
+    }
     if (settings.collectStats) {
         const TraceStats stats = combinedStats();
         std::cout << "; rays: " << stats.rays
@@ -271,8 +421,12 @@ void Renderer::render() {
                   << "; AABB tests: " << stats.aabbTests
                   << "; primitive tests: " << stats.primitiveTests
                   << "; BVH node visits: " << stats.bvhNodeVisits
-                  << "; average path depth: " << std::setprecision(2)
-                  << stats.averagePathDepth();
+                  << "; avg path depth: " << std::setprecision(2)
+                  << stats.averagePathDepth()
+                  << "; lights: " << stats.consideredLights
+                  << "; emitted shadow rays: " << stats.emittedShadowRays
+                  << "; occluded: " << stats.occludedShadowRays
+                  << "; backface rejects: " << stats.backfaceRejects;
     }
     std::cout << "." << std::endl;
 }

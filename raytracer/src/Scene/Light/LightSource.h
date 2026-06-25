@@ -8,6 +8,16 @@
 
 #include "../../Math/Vec3.h"
 
+struct LightSample {
+    Vec3 direction;
+    Vec3 radiance;
+    double maximumDistance;
+    bool valid;
+
+    LightSample()
+        : direction(), radiance(), maximumDistance(0.0), valid(false) {}
+};
+
 class LightSource {
 
     public:
@@ -18,6 +28,10 @@ class LightSource {
         const Vec3& getColor() const;
 
         virtual double getIncidentBrightness(const Vec3 & pos) const = 0;
+        virtual bool sampleIncident(
+            const Vec3& point, const Vec3& surfaceNormal,
+            LightSample& sample) const = 0;
+        virtual bool isFinite() const { return true; }
 
 protected:
         Vec3 position;
@@ -25,6 +39,6 @@ protected:
         double intensity;
 
 };
-//Types of lightSources: Point, Sun, SpotLight, Area
+
 
 #endif //RAYTRACER_LIGHTSOURCE_H

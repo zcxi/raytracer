@@ -25,6 +25,7 @@ public:
     double pdf(const Vec3& direction) const;
     bool isBlack() const;
     bool loadPpm(const std::string& path, double mapIntensity = 1.0);
+    void setIntensity(double value);
 
 private:
     Vec3 horizon;
