@@ -53,6 +53,24 @@ Render the compact realism feature showcase:
 Lens and shutter controls are available through `--aperture`, `--focus`,
 `--shutter-open`, and `--shutter-close`.
 
+Camera tuning can be done without editing C++:
+
+```sh
+./build/raytracer --scene-file scenes/chessboard.json --print-camera
+
+./build/raytracer camera-preview.png --scene-file scenes/chessboard.json \
+  --cam-pos 8.5,6.8,4.0 --cam-rot -0.32,-0.38,0 \
+  --focus 21 --samples 1 --no-adaptive --preview-scale 0.35
+
+./build/raytracer --scene-file scenes/chessboard.json \
+  --cam-pos 8.5,6.8,4.0 --cam-rot -0.32,-0.38,0 \
+  --focus 21 --save-camera scenes/chessboard.camera.json
+```
+
+`--preview-scale` only affects the rendered preview resolution. It does not
+modify saved scene dimensions, so the same tuned camera can be reused for a
+full-resolution final render.
+
 Available tone mappers are `none`, `reinhard`, and `aces`. Exposure is expressed
 in photographic stops. A preview interval of zero disables intermediate output.
 Sampling is deterministic: the same scene, sample count, and seed produce the
@@ -110,6 +128,10 @@ included scene file. Include cycles and duplicate named resources are rejected.
 The bundled `demo.json` and `chessboard.json` in `scenes/` are the reference implementations. See
 [ROADMAP.md](ROADMAP.md) (Phase 9) for the full JSON schema and field
 reference.
+
+Directional lights support optional soft sunlight with
+`"angularRadius"` in radians. A value of `0` keeps a hard-edged sun;
+small values such as `0.012` add natural penumbra to directional shadows.
 
 On multi-configuration generators such as Visual Studio, add
 `--config Release` to the build command and run the executable from the

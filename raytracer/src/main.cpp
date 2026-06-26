@@ -2,10 +2,14 @@
 #include "SceneDescription/JsonSceneLoader.h"
 #include "Writer/ImageWriter.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -18,7 +22,9 @@ struct CommandLineOptions {
     std::string sceneFile;
     std::string validateFile;
     std::string environmentMap;
+    std::string saveCameraPath;
     bool hasOutputPath = false;
+    bool printCamera = false;
     bool samples = false;
     bool preview = false;
     bool seed = false;
@@ -38,6 +44,7 @@ struct CommandLineOptions {
     bool cameraPosition = false;
     bool cameraRotation = false;
     bool fov = false;
+    bool previewScale = false;
     bool adaptiveMinSamples = false;
     bool adaptiveMaxSamples = false;
     bool adaptiveRelativeError = false;
@@ -57,6 +64,7 @@ struct CommandLineOptions {
     double shutterOpenValue = 0.0;
     double shutterCloseValue = 0.0;
     double fovValue = 0.0;
+    double previewScaleValue = 1.0;
 };
 
 ToneMapper parseToneMapper(const std::string& value) {
@@ -124,6 +132,62 @@ Vec3 parseVec3(
         parseDouble(value.substr(second + 1), optionName));
 }
 
+nlohmann::json cameraJson(const CameraState& camera) {
+    return nlohmann::json{
+        {"position", {
+            camera.position.X(),
+            camera.position.Y(),
+            camera.position.Z()}},
+        {"rotation", {
+            camera.rotation.X(),
+            camera.rotation.Y(),
+            camera.rotation.Z()}},
+        {"verticalFov", camera.verticalFov},
+        {"aperture", camera.aperture},
+        {"focusDistance", camera.focusDistance},
+        {"shutter", {camera.shutterOpen, camera.shutterClose}}
+    };
+}
+
+void printCamera(const CameraState& camera) {
+    std::cout << std::setw(2) << cameraJson(camera) << std::endl;
+}
+
+void saveCamera(
+        const std::string& scenePath,
+        const std::string& outputPath,
+        const CameraState& camera) {
+    std::ifstream input(scenePath);
+    if (!input) {
+        throw std::runtime_error(
+            "Failed to open scene file " + scenePath + ".");
+    }
+    nlohmann::json document;
+    try {
+        input >> document;
+    } catch (const nlohmann::json::parse_error& error) {
+        throw std::runtime_error(
+            "Failed to parse scene file " + scenePath + ": " +
+            error.what());
+    }
+    if (!document.is_object()) {
+        throw std::runtime_error(
+            "Scene file " + scenePath + " must contain a JSON object.");
+    }
+    document["camera"] = cameraJson(camera);
+
+    const std::filesystem::path target(outputPath);
+    if (target.has_parent_path()) {
+        std::filesystem::create_directories(target.parent_path());
+    }
+    std::ofstream output(outputPath);
+    if (!output) {
+        throw std::runtime_error(
+            "Failed to write camera scene file " + outputPath + ".");
+    }
+    output << std::setw(2) << document << "\n";
+}
+
 std::string executableDirectory(const char* executable) {
     const std::filesystem::path path =
         std::filesystem::absolute(executable);
@@ -178,6 +242,9 @@ void printUsage() {
         << "  --cam-pos X,Y,Z   Override camera position\n"
         << "  --cam-rot P,Y,R   Override camera Euler rotation\n"
         << "  --fov N           Override vertical field of view\n"
+        << "  --preview-scale N Render at scaled resolution for camera previews\n"
+        << "  --print-camera    Print the effective camera JSON and exit\n"
+        << "  --save-camera FILE  Save the effective camera to a scene JSON file\n"
         << "  --adaptive        Enable adaptive sampling\n"
         << "  --no-adaptive     Disable adaptive sampling from scene defaults\n"
         << "  --min-samples N   Min samples per pixel for adaptive\n"
@@ -224,6 +291,10 @@ CommandLineOptions parseArguments(
         }
         if (argument == "--denoise") {
             options.render.denoise.enabled = true;
+            continue;
+        }
+        if (argument == "--print-camera") {
+            options.printCamera = true;
             continue;
         }
         if (argument == "--no-auto-exposure") {
@@ -297,6 +368,15 @@ CommandLineOptions parseArguments(
         } else if (argument == "--fov") {
             options.fovValue = parseDouble(value, argument);
             options.fov = true;
+        } else if (argument == "--preview-scale") {
+            options.previewScaleValue = parseDouble(value, argument);
+            if (options.previewScaleValue <= 0.0) {
+                throw std::invalid_argument(
+                    "--preview-scale requires a positive number.");
+            }
+            options.previewScale = true;
+        } else if (argument == "--save-camera") {
+            options.saveCameraPath = value;
         } else if (argument == "--min-samples") {
             options.render.adaptiveMinSamples =
                 parseUnsigned(value, argument);
@@ -426,21 +506,33 @@ void applyOverrides(
         }
     }
 
-    const Camera& camera = *loaded.camera;
-    loaded.camera.reset(new Camera(
-        options.cameraPosition
-            ? options.camPosition : camera.getPosition(),
-        options.cameraRotation
-            ? options.camRotation : camera.getRotation(),
-        camera.getImageWidth(), camera.getImageHeight(),
-        options.fov ? options.fovValue : camera.getFov(),
-        options.aperture ? options.apertureValue : camera.getAperture(),
-        options.focusDistance
-            ? options.focusValue : camera.getFocusDistance(),
-        options.shutterOpen
-            ? options.shutterOpenValue : camera.getShutterOpen(),
-        options.shutterClose
-            ? options.shutterCloseValue : camera.getShutterClose()));
+    CameraState editedCamera = loaded.cameraState;
+    if (options.cameraPosition) {
+        editedCamera.position = options.camPosition;
+    }
+    if (options.cameraRotation) {
+        editedCamera.rotation = options.camRotation;
+    }
+    if (options.fov) {
+        editedCamera.verticalFov = options.fovValue;
+    }
+    if (options.aperture) {
+        editedCamera.aperture = options.apertureValue;
+    }
+    if (options.focusDistance) {
+        editedCamera.focusDistance = options.focusValue;
+    }
+    if (options.shutterOpen) {
+        editedCamera.shutterOpen = options.shutterOpenValue;
+    }
+    if (options.shutterClose) {
+        editedCamera.shutterClose = options.shutterCloseValue;
+    }
+    loaded.cameraState = editedCamera;
+    const CameraState renderCamera = options.previewScale
+        ? editedCamera.withImageScale(options.previewScaleValue)
+        : editedCamera;
+    loaded.camera = renderCamera.makeCamera();
 }
 
 } // namespace
@@ -457,6 +549,20 @@ int main(int argc, char* argv[]) {
 
         LoadedScene loaded = JsonSceneLoader::load(options.sceneFile);
         applyOverrides(loaded, options);
+        if (options.printCamera) {
+            printCamera(loaded.cameraState);
+        }
+        if (!options.saveCameraPath.empty()) {
+            saveCamera(
+                options.sceneFile, options.saveCameraPath,
+                loaded.cameraState);
+            std::cout << "Saved camera to "
+                      << options.saveCameraPath << std::endl;
+        }
+        if (options.printCamera ||
+            (!options.saveCameraPath.empty() && !options.hasOutputPath)) {
+            return 0;
+        }
         std::cout << "Loaded " << options.sceneFile
                   << ": " << loaded.summary.objects << " objects, "
                   << loaded.summary.lights << " analytic lights, "

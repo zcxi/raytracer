@@ -166,7 +166,8 @@
       "type": "directional",
       "direction": [0.45, -1.0, -0.35],
       "color": [1.0, 0.93, 0.82],
-      "irradiance": 1.8
+      "irradiance": 1.8,
+      "angularRadius": 0.012
     },
     {
       "type": "point",

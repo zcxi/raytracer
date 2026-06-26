@@ -9,6 +9,7 @@
 #include "Diagnostics/TraceStats.h"
 #include "Renderer.h"
 #include "Scene/Camera.h"
+#include "Scene/CameraState.h"
 #include "Scene/Environment.h"
 #include "Scene/Light/PointSource.h"
 #include "Scene/Light/DirectionalSource.h"
@@ -253,14 +254,22 @@ void testJsonSceneLoading() {
                " \"top\": [0.4,0.5,0.6]},\n"
             << "  \"materials\": {\"mat\": {\"type\": \"diffuse\","
                " \"albedo\": [0.8,0.7,0.6]}},\n"
-            << "  \"prototypes\": {\"ball\": {\"type\": \"sphere\","
+            << "  \"prototypes\": {"
+               "\"ball\": {\"type\": \"sphere\","
                " \"center\": [0,0,-4], \"radius\": 1,"
-               " \"material\": \"mat\"}},\n"
+               " \"material\": \"mat\"},"
+               "\"lathePiece\": {\"type\": \"lathe\", \"segments\": 16,"
+               " \"material\": \"mat\", \"profile\":"
+               " [[0,0],[0.3,0],[0.3,1],[0,1]]}},\n"
             << "  \"lights\": [{\"type\": \"point\","
                " \"position\": [0,2,0], \"color\": [1,1,1],"
                " \"intensity\": 10}],\n"
-            << "  \"objects\": [{\"type\": \"instance\","
-               " \"prototype\": \"ball\", \"translation\": [2,0,0]}]\n"
+            << "  \"objects\": ["
+               "{\"type\": \"instance\","
+               " \"prototype\": \"ball\", \"translation\": [2,0,0]},"
+               "{\"type\": \"instance\","
+               " \"prototype\": \"lathePiece\","
+               " \"translation\": [-2,0,-4]}]\n"
             << "}\n";
     }
     LoadedScene loaded = JsonSceneLoader::load(scenePath);
@@ -269,7 +278,7 @@ void testJsonSceneLoading() {
            "JSON scenes configure camera image dimensions.");
     expect(loaded.renderSettings.samplesPerPixel == 3,
            "JSON scenes configure render defaults.");
-    expect(loaded.scene->shapeCount() == 1 &&
+    expect(loaded.scene->shapeCount() == 2 &&
                loaded.scene->lightCount() == 1,
            "JSON scenes construct prototype instances and lights.");
     HitRecord hit;
@@ -277,6 +286,10 @@ void testJsonSceneLoading() {
                Ray(Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, -1.0)),
                1e-4, 100.0, hit),
            "Prototype instance translation affects JSON geometry.");
+    expect(loaded.scene->findClosestHit(
+               Ray(Vec3(-2.0, 0.5, 0.0), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, hit),
+           "Lathe prototype instance translation affects JSON geometry.");
     std::remove(scenePath.c_str());
 
     const std::string invalidPath = "test-invalid-scene.json";
@@ -617,6 +630,37 @@ void testCamera() {
     expectThrows([]() {
         Camera invalid(Vec3(), Vec3(), 0, 100, PI * 0.5);
     }, "Invalid camera dimensions are rejected.");
+}
+
+void testCameraState() {
+    const CameraState state(
+        Vec3(1.0, 2.0, 3.0), Vec3(0.1, 0.2, 0.3),
+        800, 600, PI * 0.4, 0.05, 12.0, 0.25, 0.75);
+    std::unique_ptr<Camera> camera = state.makeCamera();
+    expectVecNear(camera->getPosition(), Vec3(1.0, 2.0, 3.0), 1e-12,
+                  "CameraState builds cameras from editable position state.");
+    expectVecNear(camera->getRotation(), Vec3(0.1, 0.2, 0.3), 1e-12,
+                  "CameraState builds cameras from editable rotation state.");
+    expect(camera->getImageWidth() == 800 &&
+               camera->getImageHeight() == 600,
+           "CameraState preserves render dimensions.");
+    expectNear(camera->getFocusDistance(), 12.0, 1e-12,
+               "CameraState preserves focus distance.");
+
+    const CameraState copied = CameraState::fromCamera(*camera);
+    expectVecNear(copied.position, state.position, 1e-12,
+                  "CameraState can be reconstructed from a Camera.");
+    expectNear(copied.verticalFov, state.verticalFov, 1e-12,
+               "CameraState preserves field of view when copied from a Camera.");
+
+    const CameraState preview = state.withImageScale(0.25);
+    expect(preview.imageWidth == 200 && preview.imageHeight == 150,
+           "CameraState preview scaling creates lower-resolution cameras.");
+    expectVecNear(preview.position, state.position, 1e-12,
+                  "CameraState preview scaling does not move the camera.");
+    expectThrows([state]() {
+        (void)state.withImageScale(0.0);
+    }, "Invalid camera preview scales are rejected.");
 }
 
 void testDirectLightingAndShadows() {
@@ -1256,6 +1300,8 @@ void testDirectionalAndSpotLights() {
     DirectionalSource softSun(
         Vec3(0.0, -1.0, 0.0), Vec3(1.0, 1.0, 1.0),
         1.0, 0.02);
+    expect(std::abs(softSun.getAngularRadius() - 0.02) < 1e-12,
+           "Soft directional sunlight stores its angular radius.");
     Sampler softSunSampler(4, 5, 6);
     LightSample softSample;
     expect(softSun.sampleIncident(
@@ -1587,6 +1633,7 @@ int main() {
         testCubeIntersection();
         testPyramidIntersection();
         testCamera();
+        testCameraState();
         testDirectLightingAndShadows();
         testImageEncoding();
         testDeterministicSampling();

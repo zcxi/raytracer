@@ -624,7 +624,7 @@ struct Loader {
                  "unknown shape type \"" + type + "\"");
         }
 
-        if (hasTransform || type == "obj") {
+        if (hasTransform || type == "obj" || type == "lathe") {
             const Json transform = object.value(
                 "transform", Json::object());
             if (!transform.is_object()) {
@@ -979,10 +979,11 @@ struct Loader {
 
         LoadedScene result;
         result.scene = std::move(scene);
-        result.camera.reset(new Camera(
+        result.cameraState = CameraState(
             position, rotation, static_cast<int>(width),
             static_cast<int>(height), fov, aperture, focusDistance,
-            shutter.X(), shutter.Y()));
+            shutter.X(), shutter.Y());
+        result.camera = result.cameraState.makeCamera();
         result.renderSettings = renderSettings;
         result.outputSettings = outputSettings;
         result.outputPath = outputPath;

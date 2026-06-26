@@ -3,6 +3,7 @@
 
 #include "../Renderer.h"
 #include "../Scene/Camera.h"
+#include "../Scene/CameraState.h"
 #include "../Scene/Scene.h"
 #include "../Writer/ImageWriter.h"
 
@@ -21,6 +22,7 @@ struct SceneLoadSummary {
 
 struct LoadedScene {
     std::unique_ptr<Scene> scene;
+    CameraState cameraState;
     std::unique_ptr<Camera> camera;
     RenderSettings renderSettings;
     ImageOutputSettings outputSettings;
