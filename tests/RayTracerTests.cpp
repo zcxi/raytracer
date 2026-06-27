@@ -428,6 +428,141 @@ void testJsonSceneLoading() {
                1e-4, 100.0, includedHit),
            "Included OBJ geometry participates in scene intersections.");
 
+    const fs::path modelLibrary = includeRoot / "models.json";
+    {
+        std::ofstream library(modelLibrary.string().c_str());
+        library
+            << "{\"modelLibrary\":{\"namespace\":\"fixtures\"},"
+               "\"prototypes\":{\"orb\":{\"type\":\"sphere\","
+               "\"center\":[0,0,0],\"radius\":0.5,"
+               "\"material\":\"surfaceSlot\"}},"
+               "\"models\":{"
+               "\"pair\":{\"type\":\"group\",\"children\":["
+               "{\"type\":\"instance\",\"prototype\":\"orb\","
+               "\"translation\":[-1,0,0]},"
+               "{\"type\":\"instance\",\"prototype\":\"orb\","
+               "\"translation\":[1,0,0]}]},"
+               "\"nested\":{\"type\":\"model\","
+               "\"model\":\"pair\"}}}\n";
+    }
+    const fs::path modelScene = includeRoot / "model-scene.json";
+    {
+        std::ofstream scene(modelScene.string().c_str());
+        scene
+            << "{\"version\":1,\"includes\":[\"models.json\"],"
+               "\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"materials\":{\"blue\":{\"type\":\"diffuse\","
+               "\"albedo\":[0.1,0.2,0.9]}},"
+               "\"objects\":[{\"type\":\"model\","
+               "\"model\":\"fixtures.nested\","
+               "\"translation\":[0,0,-6],"
+               "\"rotation\":[0,0,1.5707963267948966],"
+               "\"scale\":[2,1,1],\"materialOverrides\":{"
+               "\"surfaceSlot\":\"blue\"}}]}\n";
+    }
+    LoadedScene modelLoaded = JsonSceneLoader::load(modelScene.string());
+    expect(modelLoaded.scene->shapeCount() == 2,
+           "Namespaced included models expand nested model geometry.");
+    HitRecord modelHit;
+    expect(modelLoaded.scene->findClosestHit(
+               Ray(Vec3(0.0, 2.0, 0.0), Vec3(0.0, 0.0, -1.0)),
+               1e-4, 100.0, modelHit),
+           "Model translation, rotation, and scale compose with child transforms.");
+    expectVecNear(
+        modelHit.shape->getMaterial().albedo, Vec3(0.1, 0.2, 0.9),
+        1e-9, "Model material overrides replace library material slots.");
+
+    const fs::path sameFileModel = includeRoot / "same-file-model.json";
+    {
+        std::ofstream scene(sameFileModel.string().c_str());
+        scene
+            << "{\"version\":1,\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"materials\":{\"mat\":{\"type\":\"diffuse\","
+               "\"albedo\":[1,1,1]}},\"models\":{\"ball\":{"
+               "\"type\":\"sphere\",\"center\":[0,0,0],"
+               "\"radius\":1,\"material\":\"mat\"}},"
+               "\"objects\":[{\"type\":\"model\","
+               "\"model\":\"ball\",\"translation\":[0,0,-4]}]}\n";
+    }
+    LoadedScene sameFileLoaded =
+        JsonSceneLoader::load(sameFileModel.string());
+    expect(sameFileLoaded.scene->shapeCount() == 1,
+           "Models declared in the scene file can be instantiated.");
+
+    const fs::path missingModel = includeRoot / "missing-model.json";
+    {
+        std::ofstream scene(missingModel.string().c_str());
+        scene
+            << "{\"version\":1,\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"objects\":[{\"type\":\"model\","
+               "\"model\":\"missing\"}]}\n";
+    }
+    expectRuntimeError(
+        [missingModel]() { JsonSceneLoader::validate(missingModel.string()); },
+        "references unknown model \"missing\"",
+        "JSON validation reports unresolved model references.");
+
+    const fs::path parameterizedModel =
+        includeRoot / "parameterized-model.json";
+    {
+        std::ofstream scene(parameterizedModel.string().c_str());
+        scene
+            << "{\"version\":1,\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"models\":{\"empty\":{\"type\":\"group\","
+               "\"children\":[]}},\"objects\":[{\"type\":\"model\","
+               "\"model\":\"empty\",\"parameters\":{\"size\":2}}]}\n";
+    }
+    expectRuntimeError(
+        [parameterizedModel]() {
+            JsonSceneLoader::validate(parameterizedModel.string());
+        },
+        "model parameters are not supported yet",
+        "Reserved model parameters fail instead of being silently ignored.");
+
+    const fs::path cyclicModel = includeRoot / "cyclic-model.json";
+    {
+        std::ofstream scene(cyclicModel.string().c_str());
+        scene
+            << "{\"version\":1,\"camera\":{\"position\":[0,0,0],"
+               "\"rotation\":[0,0,0],\"verticalFov\":1},"
+               "\"models\":{\"a\":{\"type\":\"model\","
+               "\"model\":\"b\"},\"b\":{\"type\":\"model\","
+               "\"model\":\"a\"}},\"objects\":[{"
+               "\"type\":\"model\",\"model\":\"a\"}]}\n";
+    }
+    expectRuntimeError(
+        [cyclicModel]() { JsonSceneLoader::validate(cyclicModel.string()); },
+        "model cycle detected: a -> b -> a",
+        "JSON validation detects nested model cycles.");
+
+    const fs::path duplicateLibrary = includeRoot / "models-duplicate.json";
+    {
+        std::ofstream library(duplicateLibrary.string().c_str());
+        library
+            << "{\"modelLibrary\":{\"namespace\":\"fixtures\"},"
+               "\"models\":{\"pair\":{\"type\":\"group\","
+               "\"children\":[]}}}\n";
+    }
+    const fs::path duplicateScene = includeRoot / "duplicate-model.json";
+    {
+        std::ofstream scene(duplicateScene.string().c_str());
+        scene
+            << "{\"version\":1,\"includes\":[\"models.json\","
+               "\"models-duplicate.json\"],\"camera\":{"
+               "\"position\":[0,0,0],\"rotation\":[0,0,0],"
+               "\"verticalFov\":1}}\n";
+    }
+    expectRuntimeError(
+        [duplicateScene]() {
+            JsonSceneLoader::validate(duplicateScene.string());
+        },
+        "models.fixtures.pair: duplicate name across includes",
+        "JSON validation rejects duplicate fully qualified model names.");
+
     {
         std::ofstream first((includeRoot / "cycle-a.json").string().c_str());
         first << "{\"includes\":[\"cycle-b.json\"]}\n";

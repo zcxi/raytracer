@@ -1,0 +1,351 @@
+{
+  "version": 1,
+  "render": {
+    "width": 1280,
+    "height": 720,
+    "samples": 96,
+    "previewInterval": 8,
+    "seed": 17,
+    "maxBounces": 7,
+    "russianRouletteStart": 4,
+    "tileSize": 16,
+    "adaptiveSampling": true,
+    "adaptiveMinSamples": 16,
+    "adaptiveMaxSamples": 160,
+    "adaptiveBatch": 8,
+    "adaptiveRelativeError": 0.045,
+    "adaptiveAbsoluteError": 0.004,
+    "adaptiveLuminanceFloor": 0.01,
+    "exposure": 1.0,
+    "toneMapper": "aces",
+    "autoExposure": false,
+    "targetLuminance": 0.24
+  },
+  "camera": {
+    "position": [0.0, 4.4, 8.4],
+    "rotation": [-0.11, 0.0, 0.0],
+    "verticalFov": 0.78,
+    "aperture": 0.04,
+    "focusDistance": 25.0,
+    "shutter": [0.0, 1.0]
+  },
+  "environment": {
+    "bottom": [0.025, 0.023, 0.026],
+    "top": [0.09, 0.105, 0.13],
+    "intensity": 0.55
+  },
+  "materials": {
+    "polished-concrete": {
+      "type": "principled",
+      "baseColor": [0.48, 0.46, 0.42],
+      "roughness": 0.68
+    },
+    "matte-wall": {
+      "type": "principled",
+      "baseColor": [0.72, 0.69, 0.63],
+      "roughness": 0.86
+    },
+    "dark-ceiling": {
+      "type": "principled",
+      "baseColor": [0.075, 0.075, 0.085],
+      "roughness": 0.7
+    },
+    "black-stone": {
+      "type": "principled",
+      "baseColor": [0.045, 0.042, 0.04],
+      "roughness": 0.24,
+      "clearcoat": 0.35,
+      "clearcoatRoughness": 0.08
+    },
+    "white-plinth": {
+      "type": "principled",
+      "baseColor": [0.78, 0.74, 0.66],
+      "roughness": 0.36,
+      "clearcoat": 0.22,
+      "clearcoatRoughness": 0.14
+    },
+    "warm-wood": {
+      "type": "principled",
+      "baseColor": [0.33, 0.14, 0.055],
+      "roughness": 0.42,
+      "clearcoat": 0.18
+    },
+    "brushed-gold": {
+      "type": "principled",
+      "baseColor": [1.0, 0.68, 0.24],
+      "roughness": 0.18,
+      "metallic": 0.9,
+      "clearcoat": 0.25
+    },
+    "oxidized-copper": {
+      "type": "principled",
+      "baseColor": [0.11, 0.54, 0.47],
+      "roughness": 0.28,
+      "metallic": 0.75
+    },
+    "ruby-lacquer": {
+      "type": "principled",
+      "baseColor": [0.72, 0.045, 0.035],
+      "roughness": 0.16,
+      "clearcoat": 0.8,
+      "clearcoatRoughness": 0.05
+    },
+    "cobalt-glass": {
+      "type": "principled",
+      "baseColor": [0.08, 0.25, 0.86],
+      "roughness": 0.03,
+      "transmission": 0.62,
+      "ior": 1.46,
+      "clearcoat": 0.5
+    },
+    "smoked-glass": {
+      "type": "principled",
+      "baseColor": [0.45, 0.52, 0.58],
+      "roughness": 0.02,
+      "transmission": 0.74,
+      "ior": 1.52,
+      "clearcoat": 0.8
+    },
+    "violet-ceramic": {
+      "type": "principled",
+      "baseColor": [0.35, 0.12, 0.58],
+      "roughness": 0.22,
+      "clearcoat": 0.55
+    },
+    "matte-charcoal": {
+      "type": "principled",
+      "baseColor": [0.025, 0.027, 0.032],
+      "roughness": 0.74
+    },
+    "ivory-label": {
+      "type": "principled",
+      "baseColor": [0.92, 0.86, 0.68],
+      "roughness": 0.5,
+      "metallic": 0.15
+    },
+    "painting-blue": {
+      "type": "principled",
+      "baseColor": [0.03, 0.08, 0.36],
+      "roughness": 0.58
+    },
+    "painting-orange": {
+      "type": "principled",
+      "baseColor": [0.95, 0.38, 0.08],
+      "roughness": 0.5
+    },
+    "painting-pink": {
+      "type": "principled",
+      "baseColor": [0.86, 0.12, 0.46],
+      "roughness": 0.52
+    },
+    "painting-green": {
+      "type": "principled",
+      "baseColor": [0.08, 0.45, 0.22],
+      "roughness": 0.55
+    },
+    "warm-light": {
+      "type": "principled",
+      "baseColor": [1.0, 0.88, 0.65],
+      "roughness": 0.2,
+      "emission": [2.6, 2.0, 1.2]
+    },
+    "cool-light": {
+      "type": "principled",
+      "baseColor": [0.65, 0.78, 1.0],
+      "roughness": 0.2,
+      "emission": [0.9, 1.25, 2.0]
+    }
+  },
+  "prototypes": {
+    "small-label": {
+      "type": "rectangle",
+      "center": [0.0, 0.0, 0.0],
+      "normal": [0.0, 0.0, 1.0],
+      "up": [0.0, 1.0, 0.0],
+      "width": 0.62,
+      "height": 0.18,
+      "material": "ivory-label"
+    },
+    "display-cylinder": {
+      "type": "lathe",
+      "segments": 64,
+      "material": "white-plinth",
+      "profile": [
+        [0.0, 0.0], [0.62, 0.0], [0.68, 0.06],
+        [0.68, 0.74], [0.58, 0.84], [0.0, 0.84]
+      ]
+    },
+    "orb": {
+      "type": "sphere",
+      "center": [0.0, 0.0, 0.0],
+      "radius": 0.42,
+      "material": "cobalt-glass"
+    }
+  },
+  "lights": [
+    {
+      "type": "directional",
+      "direction": [-0.2, -1.0, -0.35],
+      "color": [1.0, 0.92, 0.78],
+      "irradiance": 0.38,
+      "angularRadius": 0.02
+    },
+    {
+      "type": "spot",
+      "position": [-4.5, 7.2, -9.0],
+      "direction": [0.25, -1.0, -0.35],
+      "color": [1.0, 0.86, 0.62],
+      "intensity": 2600.0,
+      "range": 16.0,
+      "innerAngle": 0.18,
+      "outerAngle": 0.55
+    },
+    {
+      "type": "spot",
+      "position": [4.7, 7.1, -11.5],
+      "direction": [-0.3, -1.0, -0.35],
+      "color": [0.7, 0.82, 1.0],
+      "intensity": 2100.0,
+      "range": 17.0,
+      "innerAngle": 0.2,
+      "outerAngle": 0.6
+    },
+    {
+      "type": "spot",
+      "position": [0.0, 7.3, -21.0],
+      "direction": [0.0, -1.0, 0.12],
+      "color": [1.0, 0.9, 0.72],
+      "intensity": 3200.0,
+      "range": 18.0,
+      "innerAngle": 0.22,
+      "outerAngle": 0.68
+    },
+    {
+      "type": "point",
+      "position": [0.0, 3.0, -17.5],
+      "color": [0.75, 0.86, 1.0],
+      "intensity": 850.0,
+      "range": 10.0
+    },
+    {
+      "type": "point",
+      "position": [-8.0, 4.8, -20.0],
+      "color": [1.0, 0.72, 0.5],
+      "intensity": 2400.0,
+      "range": 17.0
+    },
+    {
+      "type": "point",
+      "position": [8.0, 4.8, -20.0],
+      "color": [0.55, 0.72, 1.0],
+      "intensity": 2200.0,
+      "range": 17.0
+    }
+  ],
+  "objects": [
+    {
+      "type": "plane",
+      "normal": [0.0, 1.0, 0.0],
+      "point": [0.0, 0.0, 0.0],
+      "material": "polished-concrete"
+    },
+    {
+      "type": "plane",
+      "normal": [0.0, 0.0, 1.0],
+      "point": [0.0, 0.0, -34.0],
+      "material": "matte-wall"
+    },
+    {
+      "type": "plane",
+      "normal": [1.0, 0.0, 0.0],
+      "point": [-11.0, 0.0, 0.0],
+      "material": "matte-wall"
+    },
+    {
+      "type": "plane",
+      "normal": [-1.0, 0.0, 0.0],
+      "point": [11.0, 0.0, 0.0],
+      "material": "matte-wall"
+    },
+    {
+      "type": "plane",
+      "normal": [0.0, -1.0, 0.0],
+      "point": [0.0, 8.0, 0.0],
+      "material": "dark-ceiling"
+    },
+
+    {"type": "rectangle", "center": [-4.5, 7.82, -11.0], "normal": [0.0, -1.0, 0.0], "up": [0.0, 0.0, -1.0], "width": 3.8, "height": 0.55, "material": "warm-light"},
+    {"type": "rectangle", "center": [4.8, 7.82, -13.5], "normal": [0.0, -1.0, 0.0], "up": [0.0, 0.0, -1.0], "width": 3.8, "height": 0.55, "material": "cool-light"},
+    {"type": "rectangle", "center": [0.0, 7.82, -21.5], "normal": [0.0, -1.0, 0.0], "up": [0.0, 0.0, -1.0], "width": 6.2, "height": 0.65, "material": "warm-light"},
+
+    {"type": "rectangle", "center": [-6.5, 3.1, -33.92], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 2.2, "height": 1.4, "material": "painting-blue"},
+    {"type": "rectangle", "center": [-4.9, 3.1, -33.91], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.7, "height": 1.4, "material": "painting-orange"},
+    {"type": "rectangle", "center": [-2.1, 3.35, -33.92], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 2.5, "height": 1.85, "material": "painting-pink"},
+    {"type": "rectangle", "center": [2.1, 3.0, -33.92], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 1.8, "height": 1.25, "material": "painting-green"},
+    {"type": "rectangle", "center": [5.9, 3.35, -33.92], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 2.4, "height": 1.75, "material": "painting-blue"},
+    {"type": "rectangle", "center": [7.35, 3.35, -33.91], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.6, "height": 1.75, "material": "painting-orange"},
+
+    {"type": "rectangle", "center": [-10.92, 3.0, -10.0], "normal": [1.0, 0.0, 0.0], "up": [0.0, 1.0, 0.0], "width": 2.6, "height": 1.45, "material": "painting-green"},
+    {"type": "rectangle", "center": [-10.91, 3.25, -17.2], "normal": [1.0, 0.0, 0.0], "up": [0.0, 1.0, 0.0], "width": 2.2, "height": 1.7, "material": "painting-pink"},
+    {"type": "rectangle", "center": [10.92, 3.0, -12.0], "normal": [-1.0, 0.0, 0.0], "up": [0.0, 1.0, 0.0], "width": 2.5, "height": 1.55, "material": "painting-orange"},
+    {"type": "rectangle", "center": [10.91, 3.3, -20.0], "normal": [-1.0, 0.0, 0.0], "up": [0.0, 1.0, 0.0], "width": 2.4, "height": 1.75, "material": "painting-blue"},
+
+    {"type": "roundedBox", "center": [0.0, 0.45, -17.5], "dimensions": [3.7, 0.9, 3.0], "radius": 0.08, "material": "black-stone"},
+    {"type": "rectangle", "center": [0.0, 0.92, -15.98], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.9, "height": 0.22, "material": "ivory-label"},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [0.24, 2.65, 0.24], "radius": 0.07, "material": "brushed-gold", "transform": {"translation": [-0.95, 2.0, -17.6], "rotation": [0.0, 0.0, 0.72], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [0.24, 3.0, 0.24], "radius": 0.07, "material": "oxidized-copper", "transform": {"translation": [-0.45, 2.32, -17.75], "rotation": [0.22, 0.65, -0.48], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [0.24, 3.4, 0.24], "radius": 0.07, "material": "ruby-lacquer", "transform": {"translation": [0.08, 2.46, -17.42], "rotation": [-0.18, -0.4, 0.35], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [0.24, 2.85, 0.24], "radius": 0.07, "material": "brushed-gold", "transform": {"translation": [0.62, 2.22, -17.85], "rotation": [0.3, 0.25, -0.68], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [0.24, 2.4, 0.24], "radius": 0.07, "material": "oxidized-copper", "transform": {"translation": [1.02, 1.95, -17.25], "rotation": [-0.35, 0.9, 0.62], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "sphere", "center": [-0.2, 3.8, -17.6], "radius": 0.38, "material": "smoked-glass"},
+
+    {"type": "roundedBox", "center": [-5.0, 0.38, -10.8], "dimensions": [2.2, 0.76, 2.0], "radius": 0.07, "material": "white-plinth"},
+    {"type": "rectangle", "center": [-5.0, 0.78, -9.78], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.72, "height": 0.2, "material": "ivory-label"},
+    {"type": "sphere", "center": [-5.35, 1.22, -10.75], "radius": 0.42, "material": "cobalt-glass"},
+    {"type": "sphere", "center": [-4.72, 1.45, -10.55], "radius": 0.33, "material": "smoked-glass"},
+    {"type": "sphere", "center": [-5.02, 1.78, -11.05], "radius": 0.29, "material": "violet-ceramic"},
+    {"type": "sphere", "center": [-5.58, 1.88, -10.35], "radius": 0.25, "material": "brushed-gold"},
+    {"type": "sphere", "center": [-4.42, 1.98, -10.95], "radius": 0.22, "material": "oxidized-copper"},
+
+    {"type": "roundedBox", "center": [5.1, 0.42, -11.6], "dimensions": [2.4, 0.84, 2.15], "radius": 0.06, "material": "warm-wood"},
+    {"type": "rectangle", "center": [5.1, 0.86, -10.52], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.72, "height": 0.2, "material": "ivory-label"},
+    {"type": "pyramid", "baseCenter": [4.55, 0.85, -11.4], "width": 0.75, "depth": 0.65, "height": 1.7, "material": "ruby-lacquer"},
+    {"type": "pyramid", "baseCenter": [5.22, 0.85, -11.9], "width": 0.82, "depth": 0.76, "height": 1.95, "material": "brushed-gold"},
+    {"type": "pyramid", "baseCenter": [5.72, 0.85, -11.18], "width": 0.62, "depth": 0.82, "height": 1.45, "material": "oxidized-copper"},
+    {"type": "pyramid", "baseCenter": [4.98, 0.85, -10.8], "width": 0.52, "depth": 0.55, "height": 1.25, "material": "matte-charcoal"},
+
+    {"type": "instance", "prototype": "display-cylinder", "translation": [-7.2, 0.0, -18.5], "material": "black-stone"},
+    {"type": "lathe", "segments": 72, "material": "brushed-gold", "profile": [[0.0, 0.86], [0.34, 0.9], [0.2, 1.25], [0.42, 1.68], [0.16, 2.25], [0.34, 2.85], [0.0, 3.1]], "transform": {"translation": [-7.2, 0.0, -18.5], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "instance", "prototype": "small-label", "translation": [-7.2, 0.92, -17.82]},
+
+    {"type": "instance", "prototype": "display-cylinder", "translation": [7.1, 0.0, -18.2], "material": "white-plinth"},
+    {"type": "lathe", "segments": 72, "material": "violet-ceramic", "profile": [[0.0, 0.86], [0.42, 0.9], [0.26, 1.18], [0.5, 1.42], [0.28, 1.76], [0.55, 2.05], [0.18, 2.5], [0.0, 2.72]], "transform": {"translation": [7.1, 0.0, -18.2], "rotation": [0.0, 0.55, 0.0], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "instance", "prototype": "small-label", "translation": [7.1, 0.92, -17.52]},
+
+    {"type": "roundedBox", "center": [-3.5, 0.34, -24.6], "dimensions": [2.2, 0.68, 1.9], "radius": 0.06, "material": "black-stone"},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [1.8, 0.26, 0.26], "radius": 0.06, "material": "oxidized-copper", "transform": {"translation": [-3.9, 1.35, -24.8], "rotation": [0.2, 0.2, 0.95], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [1.5, 0.24, 0.24], "radius": 0.055, "material": "brushed-gold", "transform": {"translation": [-3.18, 1.7, -24.45], "rotation": [-0.25, 0.8, -0.7], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "roundedBox", "center": [0.0, 0.0, 0.0], "dimensions": [1.25, 0.22, 0.22], "radius": 0.05, "material": "ruby-lacquer", "transform": {"translation": [-3.55, 2.04, -24.25], "rotation": [0.35, -0.6, 1.2], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "sphere", "center": [-3.42, 2.58, -24.58], "radius": 0.28, "material": "smoked-glass"},
+    {"type": "instance", "prototype": "small-label", "translation": [-3.5, 0.72, -23.62]},
+
+    {"type": "roundedBox", "center": [3.6, 0.34, -24.4], "dimensions": [2.0, 0.68, 2.0], "radius": 0.06, "material": "white-plinth"},
+    {"type": "cube", "center": [0.0, 0.0, 0.0], "size": 0.82, "material": "painting-blue", "transform": {"translation": [3.05, 1.23, -24.7], "rotation": [0.25, 0.4, 0.45], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "cube", "center": [0.0, 0.0, 0.0], "size": 0.7, "material": "painting-orange", "transform": {"translation": [3.75, 1.82, -24.1], "rotation": [0.7, 0.1, -0.32], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "cube", "center": [0.0, 0.0, 0.0], "size": 0.56, "material": "painting-pink", "transform": {"translation": [4.2, 2.28, -24.75], "rotation": [-0.2, 0.8, 0.92], "scale": [1.0, 1.0, 1.0]}},
+    {"type": "sphere", "center": [3.62, 2.75, -24.42], "radius": 0.24, "material": "brushed-gold"},
+    {"type": "instance", "prototype": "small-label", "translation": [3.6, 0.72, -23.38]},
+
+    {"type": "roundedBox", "center": [0.0, 0.28, -28.6], "dimensions": [4.6, 0.56, 1.2], "radius": 0.08, "material": "warm-wood"},
+    {"type": "roundedBox", "center": [-1.55, 2.1, -28.6], "dimensions": [0.34, 3.6, 0.34], "radius": 0.08, "material": "matte-charcoal"},
+    {"type": "roundedBox", "center": [1.55, 2.1, -28.6], "dimensions": [0.34, 3.6, 0.34], "radius": 0.08, "material": "matte-charcoal"},
+    {"type": "roundedBox", "center": [0.0, 3.72, -28.6], "dimensions": [3.6, 0.34, 0.34], "radius": 0.08, "material": "brushed-gold"},
+    {"type": "sphere", "center": [-1.55, 4.1, -28.6], "radius": 0.28, "material": "cobalt-glass"},
+    {"type": "sphere", "center": [1.55, 4.1, -28.6], "radius": 0.28, "material": "smoked-glass"},
+    {"type": "rectangle", "center": [0.0, 0.58, -27.98], "normal": [0.0, 0.0, 1.0], "up": [0.0, 1.0, 0.0], "width": 0.8, "height": 0.2, "material": "ivory-label"},
+
+    {"type": "rectangularPrism", "center": [-9.8, 0.12, -6.0], "dimensions": [0.2, 0.24, 45.0], "material": "matte-charcoal"},
+    {"type": "rectangularPrism", "center": [9.8, 0.12, -6.0], "dimensions": [0.2, 0.24, 45.0], "material": "matte-charcoal"},
+    {"type": "rectangularPrism", "center": [0.0, 0.13, -31.4], "dimensions": [19.6, 0.26, 0.2], "material": "matte-charcoal"}
+  ]
+}

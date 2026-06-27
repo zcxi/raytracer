@@ -129,6 +129,64 @@ The bundled `demo.json` and `chessboard.json` in `scenes/` are the reference imp
 [ROADMAP.md](ROADMAP.md) (Phase 9) for the full JSON schema and field
 reference.
 
+### Reusable model libraries
+
+A model library is an included JSON file with a namespace, prototypes, and a
+`models` registry. Names declared by this file are exported as
+`namespace.name`, while references inside the library can stay unqualified:
+
+```json
+{
+  "modelLibrary": {"namespace": "props"},
+  "prototypes": {
+    "orb": {
+      "type": "sphere",
+      "center": [0, 0, 0],
+      "radius": 1,
+      "material": "surfaceSlot"
+    }
+  },
+  "models": {
+    "twoOrbs": {
+      "type": "group",
+      "children": [
+        {"type": "instance", "prototype": "orb", "translation": [-1, 0, 0]},
+        {"type": "instance", "prototype": "orb", "translation": [1, 0, 0]}
+      ]
+    }
+  }
+}
+```
+
+Include and instantiate the model from a scene:
+
+```json
+{
+  "includes": ["../models/props.json"],
+  "objects": [
+    {
+      "type": "model",
+      "model": "props.twoOrbs",
+      "translation": [0, 1, -8],
+      "rotation": [0, 0.5, 0],
+      "scale": [1.5, 1.5, 1.5],
+      "materialOverrides": {"surfaceSlot": "painted-metal"}
+    }
+  ]
+}
+```
+
+Model, group, and prototype-instance transforms compose through nested assets.
+Rotations are Euler angles in radians. A material override maps a material slot
+used by library geometry to a material declared by the scene. Models may contain
+other model instances; cycles, missing names, zero scale components, duplicate
+qualified exports, and unresolved override targets are validation errors.
+Parameterized models are reserved for a future schema revision and currently
+produce an explicit validation error.
+
+The reusable chess assets are in `models/chess/chess-set.json`. It exports
+individual pieces, ranks, `chess.fullSet`, and `chess.boardSquares`.
+
 Directional lights support optional soft sunlight with
 `"angularRadius"` in radians. A value of `0` keeps a hard-edged sun;
 small values such as `0.012` add natural penumbra to directional shadows.

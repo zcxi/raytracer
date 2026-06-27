@@ -805,10 +805,310 @@ Version 1.5 delivered the highest-impact realism bundle:
 - Directional-light angular radius for soft sunlight and penumbrae.
 - A compact `scenes/realism-showcase.json` reference scene.
 
-## Phase 12: Future quality-of-life and platform work
+## Phase 12: Reusable Model Libraries
 
+**Status: implemented.** The loader supports namespaced model libraries,
+nested model instances, composed translation/rotation/scale transforms,
+material-slot overrides, cycle detection, and strict validation. The chessboard
+and realism showcase scenes now consume `models/chess/chess-set.json`.
+
+**Goal:** make reusable scene assets easy to import, transform, and customize
+from JSON without copying large object/prototype blocks into every scene.
+
+The renderer already has the important foundations: JSON includes, named
+materials, named prototypes, instances, groups, transforms, relative asset path
+resolution, and validation. Phase 12 should formalize these into reusable model
+libraries so complex assets such as a full chess set, table, camera rig, studio
+lighting setup, or material pack can live in their own files and be instantiated
+from multiple scenes.
+
+### User-facing scene format
+
+A scene should be able to import model libraries:
+
+```json
+{
+  "version": 1,
+  "includes": [
+    "../models/chess/chess-set.json",
+    "../models/lighting/studio-three-point.json"
+  ],
+  "objects": [
+    {
+      "type": "model",
+      "model": "chess.fullSet",
+      "translation": [0.0, 0.0, -18.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "materialOverrides": {
+        "lightPiece": "ivory",
+        "darkPiece": "ebony"
+      }
+    }
+  ]
+}
+```
+
+A model library file should remain normal JSON scene-description data, plus a
+top-level `models` registry:
+
+```json
+{
+  "version": 1,
+  "modelLibrary": {
+    "namespace": "chess"
+  },
+  "materials": {
+    "pieceIvory": {
+      "type": "principled",
+      "baseColor": [0.92, 0.84, 0.66],
+      "roughness": 0.18
+    }
+  },
+  "prototypes": {
+    "pawn": {
+      "type": "lathe",
+      "segments": 48,
+      "material": "pieceIvory",
+      "profile": [[0.0, 0.48], [0.30, 0.50], [0.0, 1.40]]
+    }
+  },
+  "models": {
+    "fullSet": {
+      "type": "group",
+      "children": [
+        {
+          "type": "instance",
+          "prototype": "pawn",
+          "translation": [-3.5, 0.0, -2.5],
+          "material": "darkPiece"
+        }
+      ]
+    }
+  }
+}
+```
+
+When `modelLibrary.namespace` is present, exported names become namespaced:
+`models.fullSet` becomes `chess.fullSet`, `prototypes.pawn` becomes
+`chess.pawn`, and materials may be referenced as `chess.pieceIvory` if exported
+outside the library. The loader should keep local authoring concise while
+making cross-library use collision-resistant.
+
+### Core implementation plan
+
+#### Step 1: Add a model registry
+
+- Extend the JSON loader state with:
+  - `std::unordered_map<std::string, Json> models;`
+  - optional source metadata for better errors, such as file path and original
+    unqualified name.
+- Add `models` to include merging alongside `textures`, `materials`,
+  `prototypes`, `lights`, and `objects`.
+- Validate that top-level `models` is an object.
+- Reject duplicate fully-qualified model names across includes.
+- Track the declaring file so validation errors can report the model source.
+
+#### Step 2: Implement namespace qualification
+
+- Parse optional:
+
+```json
+"modelLibrary": { "namespace": "chess" }
+```
+
+- Namespace rules:
+  - Names in `models` and `prototypes` declared by the library are exported as
+    `namespace.name`.
+  - Internal references may use either local names (`pawn`) or fully-qualified
+    names (`chess.pawn`).
+  - Scene files without `modelLibrary.namespace` keep current unqualified
+    behavior for backward compatibility.
+  - Duplicate names after qualification are errors.
+- Add helper functions:
+  - `qualifyName(namespace, name)`
+  - `resolvePrototypeName(currentNamespace, requestedName)`
+  - `resolveModelName(currentNamespace, requestedName)`
+- Keep material names initially global to avoid silently rewriting existing
+  material references. Add namespaced material export only if needed after the
+  model registry is stable.
+
+#### Step 3: Add `type: "model"` objects
+
+- Extend `Loader::addObject()`:
+  - If `type == "model"`, read required string field `model`.
+  - Resolve the model name using the current namespace and model registry.
+  - Treat the resolved model JSON like a group/object subtree.
+  - Apply the model object's `translation`, `rotation`, and `scale` to all
+    generated child geometry.
+- For translation-only first pass, reuse the existing `offset` mechanism.
+- For full transform support, wrap resolved model contents in a synthetic group
+  transform:
+  - Create a `Transform` around each generated child when rotation or scale is
+    present.
+  - Or, better, add a loader-side transform stack that composes parent/model
+    transforms before creating shapes.
+- Acceptance target for first implementation: translation must work for all
+  supported child shapes; rotation and scale can be implemented by wrapping
+  children in `Transform` as long as nested transforms remain correct.
+
+#### Step 4: Add material override maps
+
+Support per-model customization:
+
+```json
+"materialOverrides": {
+  "lightPiece": "ivory",
+  "darkPiece": "ebony"
+}
+```
+
+- Extend `addObject()` to pass a `std::unordered_map<std::string, std::string>`
+  override map through groups, instances, and models.
+- When resolving a material field:
+  - If the object material name is present in the override map, use the mapped
+    material name.
+  - Otherwise use the object's declared material.
+- Preserve the current single `material` override behavior for simple
+  instances, but internally treat it as a one-entry override where appropriate.
+- Validate that both the source material placeholder and mapped target material
+  are strings.
+- Missing target materials must produce a precise loader error.
+
+#### Step 5: Move chess assets into a reusable model library
+
+Create:
+
+```text
+models/
+  chess/
+    chess-set.json
+```
+
+The model file should contain:
+
+- Piece materials or material placeholders.
+- Lathe prototypes for pawn, rook, knight, bishop, queen, and king.
+- Optional board/square prototypes if useful.
+- Models:
+  - `chess.lightBackRank`
+  - `chess.darkBackRank`
+  - `chess.lightPawnRank`
+  - `chess.darkPawnRank`
+  - `chess.fullSet`
+
+Then simplify `scenes/chessboard.json`:
+
+- Keep board, rails, table/floor/wall, camera, render settings, and lighting in
+  the scene.
+- Include `../models/chess/chess-set.json`.
+- Replace the 32 piece object entries with one model instance:
+
+```json
+{
+  "type": "model",
+  "model": "chess.fullSet",
+  "translation": [0.0, 0.0, -18.0],
+  "materialOverrides": {
+    "lightPiece": "ivory",
+    "darkPiece": "ebony"
+  }
+}
+```
+
+### Validation and test plan
+
+Add unit tests for:
+
+- Loading a model declared in the same JSON file.
+- Loading a model from an included file using a relative path.
+- Namespaced model lookup (`chess.fullSet`) succeeds.
+- Duplicate model names fail after namespace qualification.
+- Missing model references fail with the object path and requested model name.
+- Nested model references fail on cycles with a useful error.
+- Model translations affect all child geometry.
+- Rotation and scale either work correctly or fail clearly if unsupported in the
+  first pass.
+- Material overrides replace placeholder materials inside a model.
+- Existing scenes without `models` still load unchanged.
+
+Add render-level validation:
+
+- `scenes/chessboard.json` renders the full chess set after migration.
+- Object count and BVH node count stay in the expected range.
+- A low-sample preview confirms all 32 pieces remain visible.
+
+### Error handling requirements
+
+Errors should include:
+
+- Scene or model-library file path.
+- JSON path or contextual object path.
+- The unresolved name or duplicate name.
+- Whether the name was resolved as a local or fully-qualified name.
+
+Example:
+
+```text
+models/chess/chess-set.json: models.fullSet.children[0].model:
+references unknown model "chess.rank"
+```
+
+### Future-compatible design choices
+
+Do not implement parameterized models in the first pass, but reserve the field:
+
+```json
+"parameters": {
+  "squareSize": 1.0,
+  "pieceScale": 0.9
+}
+```
+
+Initial behavior:
+
+- If a `parameters` object is present on a model instance, reject it with a
+  clear "model parameters are not supported yet" error.
+- This prevents silent acceptance of data that appears meaningful but is ignored.
+
+Later parameter support can add:
+
+- Numeric substitution for fields such as dimensions, translations, and radii.
+- String substitution for material/model/prototype names.
+- Model variants such as `"variant": "lowPoly"` or `"variant": "hero"`.
+
+### Recommended implementation order
+
+1. Add `models` registry and include merging.
+2. Add same-file `type: "model"` lookup without namespaces.
+3. Add namespaced exported model names.
+4. Add model translation support and tests.
+5. Add rotation/scale support for model instances.
+6. Add material override maps.
+7. Migrate chess piece definitions into `models/chess/chess-set.json`.
+8. Simplify `scenes/chessboard.json`.
+9. Render and visually verify the chess scene.
+10. Document the model library format in `README.md`.
+
+### Phase 12 acceptance criteria
+
+- Scenes can instantiate a reusable model from an included JSON file.
+- Model libraries can use namespaces to avoid collisions.
+- Model instances support translation, rotation, and scale.
+- Material override maps allow one geometry library to be reused with different
+  scene materials.
+- The chess scene uses a reusable chess model library instead of listing all
+  piece geometry directly.
+- Existing JSON scenes remain backward compatible.
+- Tests cover lookup, transforms, overrides, validation errors, and include
+  behavior.
+
+## Phase 13: Future quality-of-life and platform work
+
+- Add a richer scene editor UI on top of `CameraState`, saved camera JSON, and
+  preview-scale rendering.
+- Add live reload for scene files and reusable model libraries.
 - Explore GPU-accelerated tracing.
-- Add scene editor tooling and live reload.
 - Add additional output formats and metadata controls.
 
 ## Suggested Release Milestones
@@ -859,3 +1159,12 @@ validation, CLI overrides, and JSON migrations of the demo and chessboard.
 Complete Phase 10 with variance-guided adaptive sampling, directional and spot
 lights, finite-light influence culling, and benchmark-gated SIMD primary-ray
 traversal.
+
+### v1.5 — High-impact Realism
+
+Completed June 25, 2026.
+
+### v1.6 — Reusable Model Libraries
+
+Complete Phase 12 with JSON-native model libraries, namespaced reusable assets,
+model transforms, material overrides, and a migrated chess-set model library.

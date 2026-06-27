@@ -21,6 +21,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -125,6 +126,84 @@ void makeAssetPathsAbsolute(Json& value, const fs::path& sourcePath) {
     }
 }
 
+std::string qualifyName(
+        const std::string& nameSpace, const std::string& name) {
+    return nameSpace.empty() || name.find('.') != std::string::npos
+        ? name
+        : nameSpace + "." + name;
+}
+
+void qualifyObjectReferences(Json& value, const std::string& nameSpace) {
+    if (value.is_array()) {
+        for (Json& child : value) {
+            qualifyObjectReferences(child, nameSpace);
+        }
+        return;
+    }
+    if (!value.is_object()) return;
+
+    if (value.contains("type") && value.at("type").is_string()) {
+        const std::string type = value.at("type").get<std::string>();
+        if (type == "instance" && value.contains("prototype") &&
+            value.at("prototype").is_string()) {
+            value["prototype"] = qualifyName(
+                nameSpace, value.at("prototype").get<std::string>());
+        } else if (type == "model" && value.contains("model") &&
+                   value.at("model").is_string()) {
+            value["model"] = qualifyName(
+                nameSpace, value.at("model").get<std::string>());
+        }
+    }
+    for (auto& [name, child] : value.items()) {
+        if (name != "modelLibrary") {
+            qualifyObjectReferences(child, nameSpace);
+        }
+    }
+}
+
+void qualifyNamedSection(
+        Json& document, const char* key, const std::string& nameSpace,
+        const fs::path& path) {
+    if (!document.contains(key)) return;
+    if (!document.at(key).is_object()) {
+        fail(path, key, "must be an object");
+    }
+    Json qualified = Json::object();
+    for (auto& [name, value] : document.at(key).items()) {
+        const std::string qualifiedName = qualifyName(nameSpace, name);
+        if (qualified.contains(qualifiedName)) {
+            fail(path, std::string(key) + "." + name,
+                 "duplicate qualified name \"" + qualifiedName + "\"");
+        }
+        qualified[qualifiedName] = value;
+    }
+    document[key] = std::move(qualified);
+}
+
+void qualifyModelLibrary(Json& document, const fs::path& path) {
+    if (!document.contains("modelLibrary")) return;
+    const Json& metadata = document.at("modelLibrary");
+    if (!metadata.is_object()) {
+        fail(path, "modelLibrary", "must be an object");
+    }
+    if (!metadata.contains("namespace")) {
+        fail(path, "modelLibrary.namespace", "required field is missing");
+    }
+    if (!metadata.at("namespace").is_string()) {
+        fail(path, "modelLibrary.namespace", "must be a string");
+    }
+    const std::string nameSpace =
+        metadata.at("namespace").get<std::string>();
+    if (nameSpace.empty() || nameSpace.front() == '.' ||
+        nameSpace.back() == '.') {
+        fail(path, "modelLibrary.namespace",
+             "must be a non-empty name without leading or trailing dots");
+    }
+    qualifyObjectReferences(document, nameSpace);
+    qualifyNamedSection(document, "prototypes", nameSpace, path);
+    qualifyNamedSection(document, "models", nameSpace, path);
+}
+
 Json loadWithIncludes(
         const fs::path& inputPath,
         std::unordered_set<std::string>& activePaths) {
@@ -138,6 +217,7 @@ Json loadWithIncludes(
         fail(path, "$", "top-level value must be an object");
     }
     makeAssetPathsAbsolute(document, path);
+    qualifyModelLibrary(document, path);
 
     Json merged = Json::object();
     if (document.contains("includes")) {
@@ -157,6 +237,7 @@ Json loadWithIncludes(
             mergeNamed(merged, child, "textures", path);
             mergeNamed(merged, child, "materials", path);
             mergeNamed(merged, child, "prototypes", path);
+            mergeNamed(merged, child, "models", path);
             mergeArray(merged, child, "lights", path);
             mergeArray(merged, child, "objects", path);
         }
@@ -171,6 +252,7 @@ Json loadWithIncludes(
     mergeNamed(merged, document, "textures", path);
     mergeNamed(merged, document, "materials", path);
     mergeNamed(merged, document, "prototypes", path);
+    mergeNamed(merged, document, "models", path);
     mergeArray(merged, document, "lights", path);
     mergeArray(merged, document, "objects", path);
     activePaths.erase(key);
@@ -298,6 +380,7 @@ struct Loader {
     std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
     std::unordered_map<std::string, Material> materials;
     std::unordered_map<std::string, Json> prototypes;
+    std::unordered_map<std::string, Json> models;
     SceneLoadSummary summary;
 
     explicit Loader(const fs::path& inputPath)
@@ -307,6 +390,7 @@ struct Loader {
           textures(),
           materials(),
           prototypes(),
+          models(),
           summary() {
         std::unordered_set<std::string> activePaths;
         document = loadWithIncludes(path, activePaths);
@@ -645,20 +729,103 @@ struct Loader {
         return result;
     }
 
+    struct ObjectTransform {
+        Vec3 translation;
+        Vec3 rotation;
+        Vec3 scale;
+    };
+
+    using TransformStack = std::vector<ObjectTransform>;
+    using MaterialOverrides =
+        std::unordered_map<std::string, std::string>;
+
+    TransformStack withObjectTransform(
+            const TransformStack& parentTransforms,
+            const Json& object, const std::string& context) const {
+        const bool hasTransform =
+            object.contains("translation") ||
+            object.contains("rotation") || object.contains("scale");
+        if (!hasTransform) return parentTransforms;
+        const Vec3 scale = optionalVec3(
+            object, "scale", Vec3(1.0, 1.0, 1.0), path, context);
+        if (std::abs(scale.X()) <= Vec3::EPSILON ||
+            std::abs(scale.Y()) <= Vec3::EPSILON ||
+            std::abs(scale.Z()) <= Vec3::EPSILON) {
+            fail(path, context + ".scale", "components must be non-zero");
+        }
+        TransformStack result = parentTransforms;
+        result.push_back(ObjectTransform{
+            optionalVec3(object, "translation", Vec3(), path, context),
+            optionalVec3(object, "rotation", Vec3(), path, context),
+            scale});
+        return result;
+    }
+
+    MaterialOverrides withMaterialOverrides(
+            const MaterialOverrides& parentOverrides,
+            const Json& object, const std::string& context) const {
+        if (!object.contains("materialOverrides")) {
+            return parentOverrides;
+        }
+        const Json& values = object.at("materialOverrides");
+        if (!values.is_object()) {
+            fail(path, context + ".materialOverrides", "must be an object");
+        }
+        MaterialOverrides result = parentOverrides;
+        for (const auto& [source, target] : values.items()) {
+            if (!target.is_string()) {
+                fail(path, context + ".materialOverrides." + source,
+                     "must be a material name string");
+            }
+            const std::string targetName = target.get<std::string>();
+            std::string resolvedTarget = targetName;
+            std::unordered_set<std::string> visited;
+            while (visited.insert(resolvedTarget).second) {
+                const auto replacement = result.find(resolvedTarget);
+                if (replacement == result.end()) break;
+                resolvedTarget = replacement->second;
+            }
+            if (materials.find(resolvedTarget) == materials.end()) {
+                fail(path, context + ".materialOverrides." + source,
+                     "references unknown material or material slot \"" +
+                     targetName + "\"");
+            }
+            result[source] = resolvedTarget;
+        }
+        return result;
+    }
+
+    std::unique_ptr<Shape> applyTransforms(
+            std::unique_ptr<Shape> result,
+            const TransformStack& transforms) const {
+        for (auto transform = transforms.rbegin();
+             transform != transforms.rend(); ++transform) {
+            result.reset(new Transform(
+                std::move(result), transform->translation,
+                transform->rotation, transform->scale));
+        }
+        return result;
+    }
+
     void addObject(
-            Scene& scene, const Json& object, const Vec3& offset,
+            Scene& scene, const Json& object,
+            const TransformStack& parentTransforms,
+            const MaterialOverrides& parentOverrides,
             const std::string& context, unsigned int depth = 0,
-            const std::string& materialOverride = std::string()) {
+            const std::string& materialOverride = std::string(),
+            const std::vector<std::string>& activeModels = {}) {
         if (depth > 64) {
-            fail(path, context, "prototype/group nesting is too deep");
+            fail(path, context, "prototype/group/model nesting is too deep");
         }
         if (!object.is_object()) fail(path, context, "must be an object");
         const std::string type = stringValue(
             required(object, "type", path, context),
             path, context + ".type");
         if (type == "group") {
-            const Vec3 groupOffset = offset + optionalVec3(
-                object, "translation", Vec3(), path, context);
+            const TransformStack transforms = withObjectTransform(
+                parentTransforms, object, context);
+            const MaterialOverrides overrides = withMaterialOverrides(
+                parentOverrides, object, context);
             const Json& children = required(
                 object, "children", path, context);
             if (!children.is_array()) {
@@ -666,9 +833,9 @@ struct Loader {
             }
             for (std::size_t index = 0; index < children.size(); ++index) {
                 addObject(
-                    scene, children.at(index), groupOffset,
+                    scene, children.at(index), transforms, overrides,
                     context + ".children[" + std::to_string(index) + "]",
-                    depth + 1, materialOverride);
+                    depth + 1, materialOverride, activeModels);
             }
             return;
         }
@@ -682,23 +849,73 @@ struct Loader {
                      "references unknown prototype \"" +
                      prototypeName + "\"");
             }
+            const TransformStack transforms = withObjectTransform(
+                parentTransforms, object, context);
+            const MaterialOverrides overrides = withMaterialOverrides(
+                parentOverrides, object, context);
             addObject(
-                scene, found->second,
-                offset + optionalVec3(
-                    object, "translation", Vec3(), path, context),
+                scene, found->second, transforms, overrides,
                 context + "<" + prototypeName + ">", depth + 1,
                 object.contains("material")
                     ? stringValue(
                           object.at("material"), path,
                           context + ".material")
-                    : materialOverride);
+                    : materialOverride,
+                activeModels);
+            return;
+        }
+        if (type == "model") {
+            if (object.contains("parameters")) {
+                fail(path, context + ".parameters",
+                     "model parameters are not supported yet");
+            }
+            const std::string modelName = stringValue(
+                required(object, "model", path, context),
+                path, context + ".model");
+            const auto found = models.find(modelName);
+            if (found == models.end()) {
+                fail(path, context + ".model",
+                     "references unknown model \"" + modelName + "\"");
+            }
+            if (std::find(
+                    activeModels.begin(), activeModels.end(), modelName) !=
+                activeModels.end()) {
+                std::string cycle;
+                for (const std::string& active : activeModels) {
+                    if (!cycle.empty()) cycle += " -> ";
+                    cycle += active;
+                }
+                if (!cycle.empty()) cycle += " -> ";
+                cycle += modelName;
+                fail(path, context + ".model",
+                     "model cycle detected: " + cycle);
+            }
+            std::vector<std::string> nextActiveModels = activeModels;
+            nextActiveModels.push_back(modelName);
+            addObject(
+                scene, found->second,
+                withObjectTransform(parentTransforms, object, context),
+                withMaterialOverrides(parentOverrides, object, context),
+                context + "<" + modelName + ">", depth + 1,
+                materialOverride, nextActiveModels);
             return;
         }
         Json resolvedObject = object;
-        if (!materialOverride.empty()) {
-            resolvedObject["material"] = materialOverride;
+        std::string selectedMaterial = materialOverride;
+        if (selectedMaterial.empty() && resolvedObject.contains("material") &&
+            resolvedObject.at("material").is_string()) {
+            selectedMaterial =
+                resolvedObject.at("material").get<std::string>();
         }
-        scene.addShape(shape(resolvedObject, offset, context));
+        const auto replacement = parentOverrides.find(selectedMaterial);
+        if (replacement != parentOverrides.end()) {
+            selectedMaterial = replacement->second;
+        }
+        if (!selectedMaterial.empty()) {
+            resolvedObject["material"] = selectedMaterial;
+        }
+        scene.addShape(applyTransforms(
+            shape(resolvedObject, Vec3(), context), parentTransforms));
         ++summary.objects;
     }
 
@@ -713,6 +930,18 @@ struct Loader {
             for (const auto& [name, value] :
                  document.at("prototypes").items()) {
                 prototypes.emplace(name, value);
+            }
+        }
+        if (document.contains("models")) {
+            if (!document.at("models").is_object()) {
+                fail(path, "models", "must be an object");
+            }
+            for (const auto& [name, value] :
+                 document.at("models").items()) {
+                if (!value.is_object()) {
+                    fail(path, "models." + name, "must be an object");
+                }
+                models.emplace(name, value);
             }
         }
 
@@ -944,7 +1173,9 @@ struct Loader {
                     object.at("name").is_string()) {
                     context += "(" + object.at("name").get<std::string>() + ")";
                 }
-                addObject(*scene, object, Vec3(), context);
+                addObject(
+                    *scene, object, TransformStack(), MaterialOverrides(),
+                    context);
             }
         }
         scene->finalize();
